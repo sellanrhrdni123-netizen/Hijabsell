@@ -1991,11 +1991,22 @@
       broadcastCloudSync(payload) {
         if (typeof fetch === 'undefined') return;
         try {
-          const room = App.getSyncRoom();
           const packet = {
             clientId: CLIENT_ID,
             ...payload
           };
+
+          // 1. Localhost Native Sync: Broadcast directly to local server if running on HTTP
+          if (typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http')) {
+            fetch('/api/sync/broadcast', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(packet)
+            }).catch(function() {});
+          }
+
+          // 2. Cloud Relay: Broadcast to ntfy for remote or standalone offline use
+          const room = App.getSyncRoom();
           fetch('https://ntfy.sh/' + encodeURIComponent(room), {
             method: 'POST',
             headers: {
@@ -2210,14 +2221,16 @@
           }
         } catch(e) {}
 
-        // 3. Connect real-time Server-Sent Events (SSE) via ntfy pub/sub relay
+        // 3. Connect real-time Server-Sent Events (SSE) via localhost server or cloud relay
         try {
           if (typeof EventSource !== 'undefined' && typeof window !== 'undefined') {
             if (window._byNvdilaSSE) {
               try { window._byNvdilaSSE.close(); } catch(e) {}
             }
             const room = App.getSyncRoom();
-            const sse = new EventSource('https://ntfy.sh/' + encodeURIComponent(room) + '/sse');
+            const isHttp = typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http');
+            const sseUrl = isHttp ? '/api/sync/events' : ('https://ntfy.sh/' + encodeURIComponent(room) + '/sse');
+            const sse = new EventSource(sseUrl);
             window._byNvdilaSSE = sse;
             sse.onmessage = function(event) {
               try {
@@ -2225,6 +2238,8 @@
                 const parsed = JSON.parse(event.data);
                 if (parsed.event === 'message' && parsed.message) {
                   App.handleIncomingSync(parsed.message);
+                } else {
+                  App.handleIncomingSync(parsed);
                 }
               } catch(err) {}
             };
@@ -2232,9 +2247,22 @@
           }
         } catch(e) {}
 
-        // 4. Initial load: fetch recent state via json?poll=1&since=all
+        // 4. Initial load: fetch recent state from Localhost API or cloud relay
         try {
           if (typeof fetch !== 'undefined') {
+            if (typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http')) {
+              fetch('/api/sync/data', { cache: 'no-store' })
+                .then(function(res) { return res.json(); })
+                .then(function(serverState) {
+                  if (serverState && typeof serverState === 'object') {
+                    if (serverState.data) App.handleIncomingSync({ data: serverState.data });
+                    if (serverState.chats) App.handleIncomingSync({ chats: serverState.chats });
+                    if (serverState.storeSettings) App.handleIncomingSync({ storeSettings: serverState.storeSettings });
+                  }
+                })
+                .catch(function() {});
+            }
+
             const room = App.getSyncRoom();
             fetch('https://ntfy.sh/' + encodeURIComponent(room) + '/json?poll=1&since=all', { cache: 'no-store' })
               .then(function(res) { return res.text(); })
