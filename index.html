@@ -2570,17 +2570,7 @@
       },
 
       showSyncToast(msg) {
-        try {
-          if (typeof document === 'undefined') return;
-          const old = document.getElementById('sync-toast-box');
-          if (old) old.remove();
-          const toast = document.createElement('div');
-          toast.id = 'sync-toast-box';
-          toast.className = 'sync-toast';
-          toast.innerHTML = `<span>🔄</span><span>${escapeHtml(msg)}</span>`;
-          document.body.appendChild(toast);
-          setTimeout(() => { if (toast && toast.parentNode) toast.remove(); }, 3200);
-        } catch(e) {}
+        // Silent background sync: system synchronizes directly without visual popups
       },
       saveCustomerProfile(e) {
         if (e && typeof e.preventDefault === 'function') e.preventDefault();
@@ -3295,11 +3285,7 @@
             </div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-            <button type="button" class="btn btn-outline" onclick="App.openSyncModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 11px; border-radius: 999px; background: #FAF8F5; border: 1px solid var(--border);" title="Pengaturan Sinkronisasi Real-Time Laptop & HP">
-              <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #059669;"></span>
-              <span style="font-weight: 600; color: #059669;">🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)</span>
-            </button>
-            <button type="button" class="btn btn-outline" onclick="App.syncAllWithCloud()" style="padding: 6px 10px; font-size: 11px; border-radius: 8px;" title="Sinkronkan data sekarang">🔄 Sinkronkan Sekarang</button>
+
             ${state.view === 'customers' ? `<button type="button" onclick="App.openAddCustomer()" class="btn btn-primary">+ Tambah Pelanggan</button>` : ''}
             ${state.view === 'orders' ? `<button type="button" onclick="App.openAddOrder()" class="btn btn-primary">+ Tambah Pesanan</button>` : ''}
             ${state.view === 'products' ? `<button type="button" onclick="App.openAddProduct()" class="btn btn-primary">+ Tambah Produk</button>` : ''}
@@ -4589,26 +4575,7 @@
             </div>
           </div>
 
-          <!-- Sinkronisasi Real-Time Multi-Device (Laptop ↔ HP) -->
-          <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 8px;">
-              <h3 style="font-size: 16px; font-weight: bold;">Sinkronisasi Real-Time Multi-Device (Laptop ↔ HP)</h3>
-              <span class="badge badge-success">🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)</span>
-            </div>
-            <p style="font-size: 11px; color: #777; margin-bottom: 16px;">Semua data pesanan pelanggan, katalog produk hijab, aktivitas butik, dan percakapan chat tersinkron otomatis secara instan antara Laptop Admin dan HP Pelanggan/Admin tanpa konfigurasi rumit.</p>
-            <div class="form-group">
-              <label class="form-label">Kode Saluran Sinkron (Sync Room Topic)</label>
-              <div style="display: flex; gap: 8px; max-width: 500px;">
-                <input id="set-sync-room" class="form-control" value="${escapeHtml(App.getSyncRoom())}" placeholder="bynvdila_crm_sync_channel">
-                <button type="button" class="btn btn-primary" onclick="App.saveSyncRoomFromSettings()">Simpan Room</button>
-              </div>
-              <p style="font-size: 10.5px; color: #777; margin-top: 4px;">Ubah jika Anda ingin menggunakan channel khusus butik Anda sendiri.</p>
-            </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;">
-              <button type="button" class="btn btn-outline" onclick="App.openSyncModal()">📱 Buka Dialog Sinkronisasi & Link HP</button>
-              <button type="button" class="btn btn-secondary" onclick="App.syncAllWithCloud()">🔄 Sinkronkan Sekarang</button>
-            </div>
-          </div>
+
 
           <!-- 5. Integrasi Database Cloud Supabase -->
           <div class="card">
@@ -4695,11 +4662,7 @@
               <span class="badge badge-vip" style="background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; font-weight: bold;">Portal Pelanggan Resmi</span>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
-              <button type="button" class="btn btn-outline" onclick="App.openSyncModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 11px; border-radius: 999px; background: #FAF8F5; border: 1px solid var(--border);" title="Status Sinkronisasi Multi-Device Laptop & HP">
-                <span style="width: 7px; height: 7px; border-radius: 50%; background: #059669; display: inline-block;"></span>
-                <span style="font-weight: 600; color: #059669;">🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)</span>
-              </button>
-              <button type="button" class="btn btn-outline" onclick="App.syncAllWithCloud()" style="padding: 4px 8px; font-size: 11px; border-radius: 8px;" title="Sinkronkan data sekarang">🔄 Sinkronkan Sekarang</button>
+
               <span style="font-size: 12px; color: #555;">Halo, <strong>${escapeHtml(auth.name || 'Sahabat')}</strong></span>
               <span class="badge badge-vip card-clickable" onclick="App.handleCustomerStatClick('member')" style="background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; font-weight: 600; font-size: 11.5px; padding: 4px 10px; border-radius: 999px; cursor: pointer;" title="Klik untuk info Membership">👑 ${escapeHtml(segment)}</span>
               ${isSella ? `

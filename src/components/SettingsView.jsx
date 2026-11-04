@@ -105,25 +105,7 @@ export default function SettingsView({
         </div>
       </div>
 
-      {/* Real-time Multi-Device Sync Card */}
-      <div className="bg-white rounded-2xl border border-emerald-200 p-6 shadow-2xs space-y-4">
-        <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
-          <div>
-            <h3 className="font-serif text-base font-semibold text-stone-900">
-              Sinkronisasi Real-Time Multi-Device (Laptop ↔ HP)
-            </h3>
-            <p className="text-xs text-stone-500">
-              Semua aktivitas pemesanan, produk baru, dan chat langsung terhubung otomatis
-            </p>
-          </div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-700">
-            🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)
-          </span>
-        </div>
-        <p className="text-xs text-stone-600">
-          Kode saluran aktif: <code className="px-2 py-0.5 rounded bg-stone-100 font-mono text-stone-800">bynvdila_crm_sync_channel</code>. Buka butik di HP (Chrome/Safari) untuk langsung melihat pembaruan data secara langsung.
-        </p>
-      </div>
+
 
       {/* Marketplace Status Indicator */}
       <div className="bg-white rounded-2xl border border-nvdila-warm/80 p-6 shadow-2xs space-y-4">
