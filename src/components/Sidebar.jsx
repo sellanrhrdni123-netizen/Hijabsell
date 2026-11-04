@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Sparkles,
 } from 'lucide-react';
+import { LOGO_DATA_URI } from '../assets/logoBase64';
 
 export default function Sidebar({
   currentView,
@@ -53,12 +54,14 @@ export default function Sidebar({
         {/* Brand Header */}
         <div className="p-6 border-b border-stone-800/80 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-stone-200 flex items-center justify-center text-stone-900 font-serif font-bold text-lg shadow-inner">
-              N
-            </div>
+            <img
+              src={LOGO_DATA_URI}
+              alt="BY.NVDILA"
+              className="w-10 h-10 rounded-full object-cover border border-stone-700 shadow-md bg-stone-100"
+            />
             <div>
-              <h1 className="font-serif text-lg font-semibold tracking-wide text-white">
-                by.Nvdila
+              <h1 className="font-serif text-lg font-bold tracking-wide text-white">
+                BY.NVDILA
               </h1>
               <p className="text-xs text-stone-400 tracking-wider uppercase font-medium">
                 Brand Hijab System

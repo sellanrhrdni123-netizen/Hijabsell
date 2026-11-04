@@ -41,8 +41,9 @@ assert(appHtml.includes('App.selectPurchaseColor'), 'Color buttons call App.sele
 console.log('  [PASS] Safe color selection button handler implemented');
 
 // 7. Multi-delimiter in Array Variants
+(async () => {
 const storageJsPath = path.join(__dirname, 'src', 'utils', 'storage.js');
-const storageJs = require(storageJsPath);
+const storageJs = await import('file:///' + storageJsPath.replace(/\\/g, '/'));
 const prodWithArrayDelim = {
   id: 'PRD-TEST-DELIM',
   name: 'Viscose Hijab Multi Delim',
@@ -59,6 +60,7 @@ assert(storageJs.isProductColorAvailable(prodWithArrayDelim, 'Sage'), 'isProduct
 assert(storageJs.isProductColorAvailable(prodWithArrayDelim, 'mocca'), 'isProductColorAvailable matches lowercase mocca');
 assert(!storageJs.isProductColorAvailable(prodWithArrayDelim, 'Hijau'), 'isProductColorAvailable rejects unlisted color');
 console.log('  [PASS] getProductColors handles array items with multi-delimiters');
+})();
 
 // 8. Modular React DashboardView Laptop & Mobile Responsiveness
 const dashboardJsxPath = path.join(__dirname, 'src', 'components', 'DashboardView.jsx');

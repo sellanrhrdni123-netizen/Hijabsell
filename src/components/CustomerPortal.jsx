@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { formatRupiah, formatDate, getProductColors, isProductColorAvailable } from '../utils/storage';
 import EmptyState from './EmptyState';
+import { LOGO_DATA_URI } from '../assets/logoBase64';
 
 export default function CustomerPortal({
   user,
@@ -152,12 +153,14 @@ export default function CustomerPortal({
       <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-nvdila-warm/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('home')}>
-            <div className="w-9 h-9 rounded-xl bg-stone-900 text-white flex items-center justify-center font-serif font-bold text-base shadow-sm">
-              N
-            </div>
+            <img
+              src={LOGO_DATA_URI}
+              alt="BY.NVDILA"
+              className="w-9 h-9 rounded-full object-cover border border-stone-200 shadow-sm bg-white"
+            />
             <div>
               <h1 className="font-serif text-lg font-bold text-nvdila-charcoal tracking-wide">
-                by.Nvdila
+                BY.NVDILA
               </h1>
               <p className="text-[10px] text-stone-400 tracking-wider uppercase font-semibold">
                 Hijab & Modest Wear

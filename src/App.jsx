@@ -622,7 +622,7 @@ export default function App() {
 
   // Header Titles Map
   const viewTitles = {
-    dashboard: { title: 'Dashboard CRM', subtitle: 'Ikhtisar performa bisnis hijab & segmentasi pelanggan by.Nvdila' },
+    dashboard: { title: 'Dashboard CRM', subtitle: 'Ikhtisar performa bisnis hijab & segmentasi pelanggan BY.NVDILA' },
     customers: { title: 'Daftar Pelanggan', subtitle: 'Manajemen database & riwayat profil pelanggan' },
     products: { title: 'Katalog Produk Hijab', subtitle: 'Manajemen produk, warna, harga, dan ketersediaan stok' },
     orders: { title: 'Manajemen Pesanan', subtitle: 'Transaksi pesanan dari Shopee, TikTok Shop, Tokopedia & WhatsApp' },
@@ -632,7 +632,7 @@ export default function App() {
     settings: { title: 'Pengaturan Sistem', subtitle: 'Konfigurasi akun, integrasi marketplace, dan opsi data' },
   };
 
-  const currentHeaderInfo = viewTitles[currentView] || { title: 'by.Nvdila CRM', subtitle: '' };
+  const currentHeaderInfo = viewTitles[currentView] || { title: 'BY.NVDILA', subtitle: '' };
 
   return (
     <div className="min-h-screen bg-nvdila-bg flex font-sans text-stone-800">

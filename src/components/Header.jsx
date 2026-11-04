@@ -38,7 +38,7 @@ export default function Header({
                 {title}
               </h2>
               <span className="hidden sm:inline-block text-xs px-2 py-0.5 rounded-full bg-nvdila-cream border border-nvdila-warm text-nvdila-darkMocha font-medium">
-                by.nvdila Modest Wear
+                BY.NVDILA Modest Wear
               </span>
             </div>
             {subtitle && (

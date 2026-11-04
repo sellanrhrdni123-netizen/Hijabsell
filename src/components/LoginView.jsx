@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Lock, ShieldCheck, User, ArrowRight, Sparkles, X, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { LOGO_DATA_URI } from '../assets/logoBase64';
 
 export default function LoginView({ onLogin }) {
   const [email, setEmail] = useState('');
@@ -42,11 +43,13 @@ export default function LoginView({ onLogin }) {
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-nvdila-warm p-8 relative z-10 animate-in fade-in zoom-in-95 duration-200">
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-stone-900 to-stone-800 text-white flex items-center justify-center font-serif text-2xl font-bold shadow-md">
-            N
-          </div>
+          <img
+            src={LOGO_DATA_URI}
+            alt="BY.NVDILA"
+            className="w-16 h-16 mx-auto mb-3 rounded-full object-cover border-2 border-stone-200 shadow-md bg-stone-50"
+          />
           <h1 className="font-serif text-2xl font-bold text-nvdila-charcoal tracking-wide">
-            by.Nvdila
+            BY.NVDILA
           </h1>
           <p className="text-xs text-stone-500 uppercase tracking-widest mt-0.5 font-medium">
             Customer Relationship Management

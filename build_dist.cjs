@@ -8,6 +8,9 @@ if (!fs.existsSync(distDir)) {
 
 fs.copyFileSync(path.join(__dirname, 'index.html'), path.join(distDir, 'index.html'));
 fs.copyFileSync(path.join(__dirname, 'app.html'), path.join(distDir, 'app.html'));
+if (fs.existsSync(path.join(__dirname, 'logo.jpg'))) {
+  fs.copyFileSync(path.join(__dirname, 'logo.jpg'), path.join(distDir, 'logo.jpg'));
+}
 if (fs.existsSync(path.join(__dirname, 'supabase-schema.sql'))) {
   fs.copyFileSync(path.join(__dirname, 'supabase-schema.sql'), path.join(distDir, 'supabase-schema.sql'));
 }
