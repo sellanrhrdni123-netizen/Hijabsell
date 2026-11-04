@@ -97,6 +97,16 @@ const server = http.createServer((req, res) => {
         if (payload.data) {
           latestSyncState.data = payload.data;
         }
+        if (payload.order && typeof payload.order === 'object' && payload.order.id) {
+          if (!latestSyncState.data) latestSyncState.data = { products: [], orders: [], customers: [], activities: [], followups: [] };
+          if (!latestSyncState.data.orders) latestSyncState.data.orders = [];
+          const oIdx = latestSyncState.data.orders.findIndex(o => o.id === payload.order.id);
+          if (oIdx === -1) {
+            latestSyncState.data.orders.unshift(payload.order);
+          } else {
+            latestSyncState.data.orders[oIdx] = { ...latestSyncState.data.orders[oIdx], ...payload.order };
+          }
+        }
         if (payload.product && typeof payload.product === 'object' && payload.product.id) {
           if (!latestSyncState.data) latestSyncState.data = { products: [], orders: [], customers: [], activities: [], followups: [] };
           if (!latestSyncState.data.products) latestSyncState.data.products = [];

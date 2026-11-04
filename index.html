@@ -1208,6 +1208,20 @@
       };
       saveData(state.data);
 
+      // Explicit instant broadcast for newly placed customer order
+      try {
+        if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+          App.broadcastCloudSync({
+            type: 'ORDER_CREATE',
+            order: newOrder,
+            products: updatedProducts,
+            customer: syncedCusts.find(function(c) { return c.id === custId; }) || { id: custId, name: custName, phone: custPhone, email: custEmail, address: address },
+            activity: newActivities[0],
+            timestamp: Date.now()
+          });
+        }
+      } catch(e) {}
+
       state.activeModal = null;
       state.modalPayload = null;
       alert('Alhamdulillah! Pesanan ' + newOrder.id + ' berhasil dibuat.');
@@ -2106,6 +2120,21 @@
               }
             }
 
+            // Direct single order creation handling
+            if (packet.order && typeof packet.order === 'object' && packet.order.id) {
+              const ro = packet.order;
+              const localOrders = state.data.orders || [];
+              const oIdx = localOrders.findIndex(function(lo) { return lo.id === ro.id; });
+              if (oIdx === -1) {
+                localOrders.unshift(ro);
+                hasChanges = true;
+              } else {
+                localOrders[oIdx] = { ...localOrders[oIdx], ...ro };
+                hasChanges = true;
+              }
+              state.data.orders = localOrders;
+            }
+
             // Merge Orders
             if (Array.isArray(remote.orders)) {
               const localOrders = state.data.orders || [];
@@ -2276,8 +2305,14 @@
               try { window._byNvdilaSSE.close(); } catch(e) {}
             }
             const room = App.getSyncRoom();
-            const isHttp = typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http');
-            const sseUrl = isHttp ? '/api/sync/events' : ('https://ntfy.sh/' + encodeURIComponent(room) + '/sse');
+            const isLocalHost = typeof window !== 'undefined' && window.location && (
+              window.location.hostname === 'localhost' ||
+              window.location.hostname === '127.0.0.1' ||
+              window.location.port === '3000' ||
+              /^172.|^192.168.|^10./.test(window.location.hostname)
+            );
+            // On localhost use local Node server /api/sync/events; on Vercel or cloud use ntfy.sh SSE!
+            const sseUrl = isLocalHost ? '/api/sync/events' : ('https://ntfy.sh/' + encodeURIComponent(room) + '/sse');
             const sse = new EventSource(sseUrl);
             window._byNvdilaSSE = sse;
             sse.onmessage = function(event) {
@@ -2309,7 +2344,13 @@
         // 4. Initial load: fetch recent state from Localhost API or cloud relay
         try {
           if (typeof fetch !== 'undefined') {
-            if (typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http')) {
+            const isLocalHost = typeof window !== 'undefined' && window.location && (
+              window.location.hostname === 'localhost' ||
+              window.location.hostname === '127.0.0.1' ||
+              window.location.port === '3000' ||
+              /^172.|^192.168.|^10./.test(window.location.hostname)
+            );
+            if (isLocalHost) {
               fetch('/api/sync/data', { cache: 'no-store' })
                 .then(function(res) { return res.json(); })
                 .then(function(serverState) {
