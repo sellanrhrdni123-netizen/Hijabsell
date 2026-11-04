@@ -1636,7 +1636,7 @@
                   const canvas = document.createElement('canvas');
                   let width = img.width || 400;
                   let height = img.height || 400;
-                  const maxDim = 600;
+                  const maxDim = 240;
                   if (width > maxDim || height > maxDim) {
                     if (width > height) {
                       height = Math.round((height * maxDim) / width);
@@ -1651,7 +1651,7 @@
                   const ctx = canvas.getContext('2d');
                   if (ctx) {
                     ctx.drawImage(img, 0, 0, width, height);
-                    const compressed = canvas.toDataURL('image/jpeg', 0.82);
+                    const compressed = canvas.toDataURL('image/jpeg', 0.60);
                     applyImage(compressed);
                     return;
                   }
@@ -1713,6 +1713,19 @@
           state.data.products = [newProd, ...(state.data.products || [])];
         }
         saveData(state.data);
+
+        // Explicit instant broadcast for product addition/update
+        try {
+          if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+            App.broadcastCloudSync({
+              type: 'PRODUCT_UPDATE',
+              product: newProd,
+              data: state.data,
+              timestamp: Date.now()
+            });
+          }
+        } catch(e) {}
+
         state.activeModal = null;
         state.modalPayload = null;
         state.tempProductImage = '';
@@ -1724,6 +1737,16 @@
         if (confirm('Hapus produk ' + name + '?')) {
           state.data.products = (state.data.products || []).filter(x => x.id !== id);
           saveData(state.data);
+          try {
+            if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+              App.broadcastCloudSync({
+                type: 'PRODUCT_DELETE',
+                productId: id,
+                data: state.data,
+                timestamp: Date.now()
+              });
+            }
+          } catch(e) {}
           render();
         }
       },
@@ -2042,20 +2065,45 @@
             if (Array.isArray(remote.products)) {
               const localProds = state.data.products || [];
               remote.products.forEach(function(rp) {
-                if (!rp || !rp.id || dummyProdIds.includes(rp.id)) return;
+                if (!rp || !rp.id) return;
+                if (dummyProdIds.includes(rp.id) && !rp.name) return;
                 const idx = localProds.findIndex(function(lp) { return lp.id === rp.id; });
                 if (idx === -1) {
-                  localProds.push(rp);
+                  localProds.unshift(rp);
                   hasChanges = true;
                 } else {
                   const lp = localProds[idx];
-                  if (lp.stock !== rp.stock || lp.price !== rp.price || lp.name !== rp.name || lp.color !== rp.color || lp.image !== rp.image || lp.status !== rp.status) {
+                  if (lp.stock !== rp.stock || lp.price !== rp.price || lp.name !== rp.name || lp.color !== rp.color || lp.image !== rp.image || lp.status !== rp.status || lp.category !== rp.category || lp.description !== rp.description) {
                     localProds[idx] = { ...lp, ...rp };
                     hasChanges = true;
                   }
                 }
               });
               state.data.products = localProds;
+            }
+
+            // Direct single product update
+            if (packet.product && typeof packet.product === 'object' && packet.product.id) {
+              const rp = packet.product;
+              const localProds = state.data.products || [];
+              const idx = localProds.findIndex(function(lp) { return lp.id === rp.id; });
+              if (idx === -1) {
+                localProds.unshift(rp);
+                hasChanges = true;
+              } else {
+                localProds[idx] = { ...localProds[idx], ...rp };
+                hasChanges = true;
+              }
+              state.data.products = localProds;
+            }
+
+            // Direct single product deletion
+            if (packet.type === 'PRODUCT_DELETE' && packet.productId) {
+              const beforeLen = (state.data.products || []).length;
+              state.data.products = (state.data.products || []).filter(function(p) { return p.id !== packet.productId; });
+              if ((state.data.products || []).length !== beforeLen) {
+                hasChanges = true;
+              }
             }
 
             // Merge Orders
@@ -2236,7 +2284,18 @@
               try {
                 if (!event || !event.data) return;
                 const parsed = JSON.parse(event.data);
+                if (parsed.attachment && parsed.attachment.url) {
+                  fetch(parsed.attachment.url)
+                    .then(function(r) { return r.text(); })
+                    .then(function(txt) { App.handleIncomingSync(txt); })
+                    .catch(function() {});
+                  return;
+                }
                 if (parsed.event === 'message' && parsed.message) {
+                  if (parsed.message.startsWith('You received a file:') && parsed.attachment && parsed.attachment.url) {
+                    fetch(parsed.attachment.url).then(function(r) { return r.text(); }).then(function(t) { App.handleIncomingSync(t); }).catch(function() {});
+                    return;
+                  }
                   App.handleIncomingSync(parsed.message);
                 } else {
                   App.handleIncomingSync(parsed);
@@ -2274,7 +2333,9 @@
                   if (!line) continue;
                   try {
                     const item = JSON.parse(line);
-                    if (item.event === 'message' && item.message) {
+                    if (item.attachment && item.attachment.url) {
+                      fetch(item.attachment.url).then(function(r) { return r.text(); }).then(function(t) { App.handleIncomingSync(t); }).catch(function() {});
+                    } else if (item.event === 'message' && item.message) {
                       App.handleIncomingSync(item.message);
                     }
                   } catch(e) {}

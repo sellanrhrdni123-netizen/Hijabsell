@@ -97,6 +97,21 @@ const server = http.createServer((req, res) => {
         if (payload.data) {
           latestSyncState.data = payload.data;
         }
+        if (payload.product && typeof payload.product === 'object' && payload.product.id) {
+          if (!latestSyncState.data) latestSyncState.data = { products: [], orders: [], customers: [], activities: [], followups: [] };
+          if (!latestSyncState.data.products) latestSyncState.data.products = [];
+          const idx = latestSyncState.data.products.findIndex(p => p.id === payload.product.id);
+          if (idx === -1) {
+            latestSyncState.data.products.unshift(payload.product);
+          } else {
+            latestSyncState.data.products[idx] = { ...latestSyncState.data.products[idx], ...payload.product };
+          }
+        }
+        if (payload.type === 'PRODUCT_DELETE' && payload.productId) {
+          if (latestSyncState.data && latestSyncState.data.products) {
+            latestSyncState.data.products = latestSyncState.data.products.filter(p => p.id !== payload.productId);
+          }
+        }
         if (payload.chats) {
           latestSyncState.chats = payload.chats;
         }
