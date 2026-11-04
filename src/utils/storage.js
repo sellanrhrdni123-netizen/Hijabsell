@@ -40,9 +40,41 @@ export const loadData = () => {
   }
 };
 
+const SYNC_TOPIC_DEFAULT = 'bynvdila_crm_sync_channel';
+const CLIENT_ID = 'react_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+
+export const getSyncRoom = () => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const room = localStorage.getItem('by_nvdila_sync_room');
+      if (room && room.trim()) return room.trim();
+    }
+  } catch (e) {}
+  return SYNC_TOPIC_DEFAULT;
+};
+
+export const broadcastSync = (payload) => {
+  if (typeof fetch === 'undefined') return;
+  try {
+    const room = getSyncRoom();
+    fetch(`https://ntfy.sh/${encodeURIComponent(room)}`, {
+      method: 'POST',
+      headers: {
+        'Title': 'BY.NVDILA Sync',
+        'Priority': 'default',
+      },
+      body: JSON.stringify({ clientId: CLIENT_ID, ...payload }),
+    }).catch(() => {});
+  } catch (e) {}
+};
+
 export const saveData = (data) => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    if (typeof window !== 'undefined' && window._byNvdilaSyncChannel) {
+      window._byNvdilaSyncChannel.postMessage({ type: 'DATA_UPDATED' });
+    }
+    broadcastSync({ type: 'DATA_UPDATE', data, timestamp: Date.now() });
   } catch (err) {
     console.error('Error saving CRM data:', err);
   }
@@ -215,23 +247,23 @@ export const refreshAllCustomerSegments = (customers, orders) => {
   });
 };
 
-// Realistic testing sample data specifically for by.Nvdila brand
+// Realistic testing sample data specifically for BY.NVDILA brand
 export const generateSampleData = () => {
   const products = [
     {
       id: 'PRD-001',
-      name: 'Pashmina Viscose Modal Premium by.Nvdila',
+      name: 'Pashmina Viscose Modal Premium BY.NVDILA',
       image: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=600&q=80',
       category: 'Pashmina Viscose Modal',
       color: 'Espresso, Mauve Taupe, Soft Sand, Broken White',
       price: 89000,
       stock: 45,
       status: 'Tersedia',
-      description: 'Bahan viscose modal premium yang ringan, super lembut, adem, dan jatuh flowy. Jahitan rapi double stitch khas by.Nvdila, pas nempel di kepala tidak licin dan tidak mudah terlihat botak.',
+      description: 'Bahan viscose modal premium yang ringan, super lembut, adem, dan jatuh flowy. Jahitan rapi double stitch khas BY.NVDILA, pas nempel di kepala tidak licin dan tidak mudah terlihat botak.',
     },
     {
       id: 'PRD-002',
-      name: 'Hijab Instan Tali Malay by.Nvdila',
+      name: 'Hijab Instan Tali Malay BY.NVDILA',
       image: 'https://images.unsplash.com/photo-1609357605129-26f69add5d6e?auto=format&fit=crop&w=600&q=80',
       category: 'Hijab Instan/Tali',
       color: 'Black Jet, Mocca, Sage Green, Dusty Rose',
@@ -242,7 +274,7 @@ export const generateSampleData = () => {
     },
     {
       id: 'PRD-003',
-      name: 'Bergo Instan Praktis Daily by.Nvdila',
+      name: 'Bergo Instan Praktis Daily BY.NVDILA',
       image: 'https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?auto=format&fit=crop&w=600&q=80',
       category: 'Bergo Instan Praktis',
       color: 'Caramel, Milo, Dark Grey, Navy, Nude',

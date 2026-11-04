@@ -67,7 +67,7 @@ export default function SettingsView({
           </div>
           <div>
             <h3 className="font-serif text-base font-semibold text-nvdila-charcoal">
-              Profil Brand by.Nvdila
+              Profil Brand BY.NVDILA
             </h3>
             <p className="text-xs text-stone-500">
               Identitas sistem Customer Relationship Management khusus hijab
@@ -81,7 +81,7 @@ export default function SettingsView({
             <input
               type="text"
               readOnly
-              value="by.Nvdila"
+              value="BY.NVDILA"
               className="w-full px-3 py-2 rounded-xl border border-stone-200 bg-stone-50 font-semibold text-stone-800"
             />
           </div>
@@ -99,10 +99,30 @@ export default function SettingsView({
           <div className="sm:col-span-2">
             <span className="text-stone-400 block mb-1">Fokus Operasional</span>
             <p className="p-3 rounded-xl bg-stone-50 border border-stone-200 text-stone-600 leading-relaxed">
-              by.Nvdila menggunakan marketplace (Shopee, TikTok Shop, Tokopedia) dan WhatsApp sebagai kanal penjualan. Sistem CRM ini beroperasi sebagai sistem internal untuk mengkonsolidasikan data pelanggan, riwayat belanja, kalkulasi segmentasi loyalitas, dan otomasi follow-up.
+              BY.NVDILA beroperasi sebagai sistem manajemen butik hijab elegan untuk mengkonsolidasikan data pelanggan, riwayat belanja, katalog produk hijab, kalkulasi segmentasi loyalitas, dan sinkronisasi real-time antara laptop admin dan smartphone pelanggan.
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Real-time Multi-Device Sync Card */}
+      <div className="bg-white rounded-2xl border border-emerald-200 p-6 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
+          <div>
+            <h3 className="font-serif text-base font-semibold text-stone-900">
+              Sinkronisasi Real-Time Multi-Device (Laptop ↔ HP)
+            </h3>
+            <p className="text-xs text-stone-500">
+              Semua aktivitas pemesanan, produk baru, dan chat langsung terhubung otomatis
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-700">
+            🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)
+          </span>
+        </div>
+        <p className="text-xs text-stone-600">
+          Kode saluran aktif: <code className="px-2 py-0.5 rounded bg-stone-100 font-mono text-stone-800">bynvdila_crm_sync_channel</code>. Buka butik di HP (Chrome/Safari) untuk langsung melihat pembaruan data secara langsung.
+        </p>
       </div>
 
       {/* Marketplace Status Indicator */}

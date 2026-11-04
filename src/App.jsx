@@ -44,6 +44,47 @@ export default function App() {
   const [customerFilterSegment, setCustomerFilterSegment] = useState('ALL');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  // Multi-Device Real-Time Sync (Laptop <-> HP)
+  useEffect(() => {
+    let channel;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel('by_nvdila_sync_channel');
+        channel.onmessage = (ev) => {
+          if (ev?.data?.type === 'DATA_UPDATED') {
+            const loaded = loadData();
+            setData(loaded);
+          }
+        };
+      }
+    } catch (e) {}
+
+    let sse;
+    try {
+      if (typeof EventSource !== 'undefined') {
+        const room = typeof localStorage !== 'undefined' ? (localStorage.getItem('by_nvdila_sync_room') || 'bynvdila_crm_sync_channel') : 'bynvdila_crm_sync_channel';
+        sse = new EventSource(`https://ntfy.sh/${encodeURIComponent(room)}/sse`);
+        sse.onmessage = (event) => {
+          try {
+            if (!event || !event.data) return;
+            const parsed = JSON.parse(event.data);
+            if (parsed.event === 'message' && parsed.message) {
+              const packet = JSON.parse(parsed.message);
+              if (packet?.data) {
+                setData((prev) => ({ ...prev, ...packet.data }));
+              }
+            }
+          } catch (e) {}
+        };
+      }
+    } catch (e) {}
+
+    return () => {
+      try { channel?.close(); } catch (e) {}
+      try { sse?.close(); } catch (e) {}
+    };
+  }, []);
+
   const handleNavigate = (view, filter = {}) => {
     setSelectedCustomer(null);
     if (filter && filter.segment) {

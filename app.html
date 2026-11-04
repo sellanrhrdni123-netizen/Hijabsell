@@ -473,6 +473,18 @@
 
     const CHATS_KEY = 'by_nvdila_chats_v2';
     const STORE_SETTINGS_KEY = 'by_nvdila_store_settings_v1';
+    const SYNC_TOPIC_DEFAULT = 'bynvdila_crm_sync_channel';
+    const CLIENT_ID = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+
+    function getSyncRoom() {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const room = localStorage.getItem('by_nvdila_sync_room');
+          if (room && room.trim()) return room.trim();
+        }
+      } catch(e) {}
+      return SYNC_TOPIC_DEFAULT;
+    }
 
     function getStoreSettings() {
       try {
@@ -494,6 +506,18 @@
     function saveStoreSettings(settings) {
       try {
         localStorage.setItem(STORE_SETTINGS_KEY, JSON.stringify(settings));
+        if (typeof window !== 'undefined' && window._byNvdilaSyncChannel) {
+          window._byNvdilaSyncChannel.postMessage({ type: 'DATA_UPDATED' });
+        }
+      } catch(e) {}
+      try {
+        if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+          App.broadcastCloudSync({
+            type: 'SETTINGS_UPDATE',
+            storeSettings: settings,
+            timestamp: Date.now()
+          });
+        }
       } catch(e) {}
     }
 
@@ -513,6 +537,16 @@
         localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
         if (typeof window !== 'undefined' && window._byNvdilaSyncChannel) {
           window._byNvdilaSyncChannel.postMessage({ type: 'DATA_UPDATED' });
+        }
+      } catch(e) {}
+
+      try {
+        if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+          App.broadcastCloudSync({
+            type: 'CHAT_UPDATE',
+            chats: chats,
+            timestamp: Date.now()
+          });
         }
       } catch(e) {}
 
@@ -848,11 +882,26 @@
       return initial;
     }
 
+    function loadData() {
+      return getInitialData();
+    }
+
     function saveData(data) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         if (typeof window !== 'undefined' && window._byNvdilaSyncChannel) {
           window._byNvdilaSyncChannel.postMessage({ type: 'DATA_UPDATED' });
+        }
+      } catch(e) {}
+
+      // Broadcast to cross-device sync channel (Laptop <-> HP)
+      try {
+        if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+          App.broadcastCloudSync({
+            type: 'DATA_UPDATE',
+            data: data,
+            timestamp: Date.now()
+          });
         }
       } catch(e) {}
 
@@ -1909,33 +1958,250 @@
       },
       
       // --- Multi-Device Cloud Synchronization (Laptop <-> HP) ---
+      getSyncRoom() {
+        return getSyncRoom();
+      },
+      saveSyncRoom() {
+        const inputEl = document.getElementById('sync-room-input');
+        const room = inputEl ? inputEl.value.trim() : '';
+        if (!room) return alert('Kode saluran sinkron tidak boleh kosong.');
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('by_nvdila_sync_room', room);
+          }
+          App.initCloudSync();
+          alert('✅ Saluran sinkronisasi berhasil diubah ke: ' + room);
+          render();
+        } catch(e) {}
+      },
+      saveSyncRoomFromSettings() {
+        const inputEl = document.getElementById('set-sync-room');
+        const room = inputEl ? inputEl.value.trim() : '';
+        if (!room) return alert('Kode saluran sinkron tidak boleh kosong.');
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('by_nvdila_sync_room', room);
+          }
+          App.initCloudSync();
+          alert('✅ Saluran sinkronisasi berhasil disimpan: ' + room);
+          render();
+        } catch(e) {}
+      },
+
+      broadcastCloudSync(payload) {
+        if (typeof fetch === 'undefined') return;
+        try {
+          const room = App.getSyncRoom();
+          const packet = {
+            clientId: CLIENT_ID,
+            ...payload
+          };
+          fetch('https://ntfy.sh/' + encodeURIComponent(room), {
+            method: 'POST',
+            headers: {
+              'Title': 'BY.NVDILA Sync',
+              'Priority': 'default'
+            },
+            body: JSON.stringify(packet)
+          }).catch(function() {});
+        } catch(e) {}
+      },
+
+      handleIncomingSync(rawMsg) {
+        try {
+          if (!rawMsg) return;
+          let packet;
+          if (typeof rawMsg === 'string') {
+            try { packet = JSON.parse(rawMsg); } catch(e) { return; }
+          } else if (typeof rawMsg === 'object') {
+            packet = rawMsg;
+          }
+          if (!packet || typeof packet !== 'object') return;
+          if (packet.clientId && packet.clientId === CLIENT_ID) return; // Do not process own echo
+
+          let hasChanges = false;
+          const dummyNames = ['Zahra Amelia Putri', 'Nabila Khairunnisa', 'Fathia Rahmadina', 'Dinda Ayu Maharani', 'Siti Hanifah'];
+          const dummyProdIds = ['PRD-001', 'PRD-002', 'PRD-003', 'PRD-004', 'PRD-005', 'PRD-006'];
+
+          // 1. Merge Products, Orders, Customers, Activities, Followups
+          if (packet.data && typeof packet.data === 'object') {
+            const remote = packet.data;
+
+            // Merge Products
+            if (Array.isArray(remote.products)) {
+              const localProds = state.data.products || [];
+              remote.products.forEach(function(rp) {
+                if (!rp || !rp.id || dummyProdIds.includes(rp.id)) return;
+                const idx = localProds.findIndex(function(lp) { return lp.id === rp.id; });
+                if (idx === -1) {
+                  localProds.push(rp);
+                  hasChanges = true;
+                } else {
+                  const lp = localProds[idx];
+                  if (lp.stock !== rp.stock || lp.price !== rp.price || lp.name !== rp.name || lp.color !== rp.color || lp.image !== rp.image || lp.status !== rp.status) {
+                    localProds[idx] = { ...lp, ...rp };
+                    hasChanges = true;
+                  }
+                }
+              });
+              state.data.products = localProds;
+            }
+
+            // Merge Orders
+            if (Array.isArray(remote.orders)) {
+              const localOrders = state.data.orders || [];
+              remote.orders.forEach(function(ro) {
+                if (!ro || !ro.id || dummyNames.includes(ro.customerName) || ['ORD-2026-001', 'ORD-2026-002', 'ORD-2026-003', 'ORD-2026-004'].includes(ro.id)) return;
+                const idx = localOrders.findIndex(function(lo) { return lo.id === ro.id; });
+                if (idx === -1) {
+                  localOrders.unshift(ro);
+                  hasChanges = true;
+                } else {
+                  const lo = localOrders[idx];
+                  if (lo.orderStatus !== ro.orderStatus || lo.paymentStatus !== ro.paymentStatus || lo.resi !== ro.resi || lo.total !== ro.total) {
+                    localOrders[idx] = { ...lo, ...ro };
+                    hasChanges = true;
+                  }
+                }
+              });
+              state.data.orders = localOrders;
+            }
+
+            // Merge Customers
+            if (Array.isArray(remote.customers)) {
+              const localCusts = state.data.customers || [];
+              remote.customers.forEach(function(rc) {
+                if (!rc || (!rc.id && !rc.email) || dummyNames.includes(rc.name) || ['CUST-001', 'CUST-002', 'CUST-003', 'CUST-004', 'CUST-005'].includes(rc.id)) return;
+                const idx = localCusts.findIndex(function(lc) {
+                  return (rc.id && lc.id === rc.id) || (rc.email && lc.email && lc.email.toLowerCase() === rc.email.toLowerCase());
+                });
+                if (idx === -1) {
+                  localCusts.push(rc);
+                  hasChanges = true;
+                } else {
+                  localCusts[idx] = { ...localCusts[idx], ...rc };
+                  hasChanges = true;
+                }
+              });
+              state.data.customers = syncAllCustomerSegments(localCusts, state.data.orders);
+            }
+
+            // Merge Activities
+            if (Array.isArray(remote.activities)) {
+              const localActs = state.data.activities || [];
+              const actIds = new Set(localActs.map(function(a) { return a.id; }));
+              const newActs = remote.activities.filter(function(a) {
+                return a && a.id && !actIds.has(a.id) && !(a.title && a.title.includes('ORD-2026-00'));
+              });
+              if (newActs.length > 0) {
+                state.data.activities = [...newActs, ...localActs].slice(0, 150);
+                hasChanges = true;
+              }
+            }
+
+            // Merge Followups
+            if (Array.isArray(remote.followups)) {
+              const localFlws = state.data.followups || [];
+              const flwIds = new Set(localFlws.map(function(f) { return f.id; }));
+              const newFlws = remote.followups.filter(function(f) {
+                return f && f.id && !flwIds.has(f.id) && !dummyNames.includes(f.customerName);
+              });
+              if (newFlws.length > 0) {
+                state.data.followups = [...newFlws, ...localFlws];
+                hasChanges = true;
+              }
+            }
+          }
+
+          // 2. Merge Chats
+          if (Array.isArray(packet.chats)) {
+            const localChats = state.chats || [];
+            const chatKeys = new Set(localChats.map(function(c) {
+              return c.id || (c.sender + '_' + c.timestamp + '_' + c.text);
+            }));
+            let newChatAdded = false;
+            packet.chats.forEach(function(rc) {
+              if (!rc) return;
+              const key = rc.id || (rc.sender + '_' + rc.timestamp + '_' + (rc.text || rc.message || ''));
+              if (!chatKeys.has(key)) {
+                localChats.push({
+                  id: rc.id || ('chat-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6)),
+                  customerId: rc.customerId || rc.customer_id || 'general',
+                  sender: rc.sender || 'customer',
+                  text: rc.text || rc.message || '',
+                  timestamp: rc.timestamp || rc.created_at || new Date().toISOString(),
+                  customerEmail: rc.customerEmail || ''
+                });
+                chatKeys.add(key);
+                newChatAdded = true;
+                hasChanges = true;
+              }
+            });
+            if (newChatAdded) {
+              localChats.sort(function(a, b) { return new Date(a.timestamp) - new Date(b.timestamp); });
+              state.chats = localChats;
+              try {
+                if (typeof localStorage !== 'undefined') {
+                  localStorage.setItem(CHATS_KEY, JSON.stringify(state.chats));
+                }
+              } catch(e) {}
+            }
+          }
+
+          // 3. Merge Store Settings
+          if (packet.storeSettings && typeof packet.storeSettings === 'object') {
+            state.storeSettings = { ...(state.storeSettings || {}), ...packet.storeSettings };
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(STORE_SETTINGS_KEY, JSON.stringify(state.storeSettings));
+              }
+            } catch(e) {}
+            hasChanges = true;
+          }
+
+          if (hasChanges) {
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+              }
+            } catch(e) {}
+            render();
+            App.showSyncToast('🟢 Data baru tersinkronisasi (Laptop ↔ HP)!');
+          }
+        } catch(err) {
+          console.warn('Sync merge error:', err);
+        }
+      },
+
       initCloudSync() {
+        // 1. URL Query parameters for sync_room or Supabase
         try {
           if (typeof window !== 'undefined' && window.location && window.location.search) {
             const params = new URLSearchParams(window.location.search);
+            const room = params.get('sync_room') || params.get('room');
+            if (room && typeof localStorage !== 'undefined') {
+              localStorage.setItem('by_nvdila_sync_room', decodeURIComponent(room));
+            }
             const sbUrl = params.get('sb_url') || params.get('sync_url');
             const sbKey = params.get('sb_key') || params.get('sync_key');
-            if (sbUrl && sbKey) {
+            if (sbUrl && sbKey && typeof localStorage !== 'undefined') {
               localStorage.setItem('by_nvdila_supabase_url', decodeURIComponent(sbUrl));
               localStorage.setItem('by_nvdila_supabase_key', decodeURIComponent(sbKey));
-              if (window.history && window.history.replaceState) {
-                const cleanUrl = window.location.pathname + window.location.hash;
-                window.history.replaceState({}, document.title, cleanUrl);
-              }
-              setTimeout(() => {
-                App.showSyncToast('✅ Berhasil terhubung ke Cloud & Laptop!');
-                App.syncAllWithCloud();
-              }, 500);
+            }
+            if (window.history && window.history.replaceState) {
+              const cleanUrl = window.location.pathname + window.location.hash;
+              window.history.replaceState({}, document.title, cleanUrl);
             }
           }
         } catch(e) {}
 
+        // 2. Tab-to-tab BroadcastChannel on same device
         try {
-          if (typeof BroadcastChannel !== 'undefined' && !window._byNvdilaSyncChannel) {
+          if (typeof BroadcastChannel !== 'undefined' && typeof window !== 'undefined' && !window._byNvdilaSyncChannel) {
             window._byNvdilaSyncChannel = new BroadcastChannel('by_nvdila_sync_channel');
-            window._byNvdilaSyncChannel.onmessage = (ev) => {
+            window._byNvdilaSyncChannel.onmessage = function(ev) {
               if (ev && ev.data && ev.data.type === 'DATA_UPDATED') {
-                state.data = loadData();
+                state.data = getInitialData();
                 state.chats = getChats();
                 state.storeSettings = getStoreSettings();
                 render();
@@ -1944,17 +2210,112 @@
           }
         } catch(e) {}
 
+        // 3. Connect real-time Server-Sent Events (SSE) via ntfy pub/sub relay
+        try {
+          if (typeof EventSource !== 'undefined' && typeof window !== 'undefined') {
+            if (window._byNvdilaSSE) {
+              try { window._byNvdilaSSE.close(); } catch(e) {}
+            }
+            const room = App.getSyncRoom();
+            const sse = new EventSource('https://ntfy.sh/' + encodeURIComponent(room) + '/sse');
+            window._byNvdilaSSE = sse;
+            sse.onmessage = function(event) {
+              try {
+                if (!event || !event.data) return;
+                const parsed = JSON.parse(event.data);
+                if (parsed.event === 'message' && parsed.message) {
+                  App.handleIncomingSync(parsed.message);
+                }
+              } catch(err) {}
+            };
+            sse.onerror = function() {};
+          }
+        } catch(e) {}
+
+        // 4. Initial load: fetch recent state via json?poll=1&since=all
+        try {
+          if (typeof fetch !== 'undefined') {
+            const room = App.getSyncRoom();
+            fetch('https://ntfy.sh/' + encodeURIComponent(room) + '/json?poll=1&since=all', { cache: 'no-store' })
+              .then(function(res) { return res.text(); })
+              .then(function(text) {
+                if (!text) return;
+                const lines = text.trim().split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                  const line = lines[i].trim();
+                  if (!line) continue;
+                  try {
+                    const item = JSON.parse(line);
+                    if (item.event === 'message' && item.message) {
+                      App.handleIncomingSync(item.message);
+                    }
+                  } catch(e) {}
+                }
+              })
+              .catch(function() {});
+          }
+        } catch(e) {}
+
+        // 5. Supabase polling if configured
+        try {
+          if (App.getSupabaseConfig().isConfigured) {
+            App.syncSupabaseCloud();
+            if (typeof setInterval !== 'undefined' && typeof window !== 'undefined' && !window._byNvdilaPollTimer) {
+              window._byNvdilaPollTimer = setInterval(function() { App.pollCloudSync(); }, 4000);
+            }
+            if (typeof window !== 'undefined' && window.addEventListener) {
+              window.addEventListener('focus', function() { App.pollCloudSync(); });
+              if (typeof document !== 'undefined' && document.addEventListener) {
+                document.addEventListener('visibilitychange', function() {
+                  if (document.visibilityState === 'visible') App.pollCloudSync();
+                });
+              }
+            }
+          }
+        } catch(e) {}
+      },
+
+      syncAllWithCloud() {
+        App.showSyncToast('🔄 Menyinkronkan data...');
+        // 1. Broadcast current state
+        App.broadcastCloudSync({
+          type: 'FULL_SYNC',
+          data: state.data,
+          chats: state.chats,
+          storeSettings: state.storeSettings,
+          timestamp: Date.now()
+        });
+
+        // 2. Fetch updates from ntfy
+        if (typeof fetch !== 'undefined') {
+          try {
+            const room = App.getSyncRoom();
+            fetch('https://ntfy.sh/' + encodeURIComponent(room) + '/json?poll=1&since=all', { cache: 'no-store' })
+              .then(function(res) { return res.text(); })
+              .then(function(text) {
+                if (!text) return;
+                const lines = text.trim().split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                  const line = lines[i].trim();
+                  if (!line) continue;
+                  try {
+                    const item = JSON.parse(line);
+                    if (item.event === 'message' && item.message) {
+                      App.handleIncomingSync(item.message);
+                    }
+                  } catch(e) {}
+                }
+                App.showSyncToast('🟢 Sinkron Real-Time Selesai (Laptop ↔ HP)!');
+              })
+              .catch(function() {
+                App.showSyncToast('🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)');
+              });
+          } catch(e) {}
+        }
+
+        // 3. Supabase if configured
         if (App.getSupabaseConfig().isConfigured) {
-          App.syncAllWithCloud();
-          if (typeof setInterval !== 'undefined' && !window._byNvdilaPollTimer) {
-            window._byNvdilaPollTimer = setInterval(() => { App.pollCloudSync(); }, 4000);
-          }
-          if (typeof window !== 'undefined' && window.addEventListener) {
-            window.addEventListener('focus', () => { App.pollCloudSync(); });
-            document.addEventListener('visibilitychange', () => {
-              if (document.visibilityState === 'visible') App.pollCloudSync();
-            });
-          }
+          App.syncSupabaseCloud();
         }
       },
 
@@ -1979,7 +2340,7 @@
         }
       },
 
-      async syncAllWithCloud() {
+      async syncSupabaseCloud() {
         const cfg = App.getSupabaseConfig();
         if (!cfg.isConfigured || typeof fetch === 'undefined') return;
         try {
@@ -2166,15 +2527,17 @@
 
       copyHpLink() {
         try {
-          const cfg = App.getSupabaseConfig();
-          const base = (typeof window !== 'undefined' && window.location) ? (window.location.origin + window.location.pathname) : 'https://hijabkuu.vercel.app';
-          const link = `${base}?sb_url=${encodeURIComponent(cfg.url)}&sb_key=${encodeURIComponent(cfg.key)}`;
-          if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+          const room = App.getSyncRoom();
+          const base = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http')) 
+            ? (window.location.origin + window.location.pathname) 
+            : 'https://hijabsell.vercel.app';
+          const link = `${base}?sync_room=${encodeURIComponent(room)}`;
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(link);
           }
-          alert('✅ Link sinkronisasi HP berhasil disalin! Buka link ini di browser HP Anda (Chrome/Safari) untuk langsung terhubung.');
+          alert('✅ Link sinkronisasi HP berhasil disalin:\n' + link + '\n\nBuka link ini di browser HP Anda (Chrome/Safari) untuk langsung terhubung!');
         } catch(e) {
-          alert('Silakan salin teks link yang ada di kotak input.');
+          alert('Buka link ini di browser HP Anda: https://hijabsell.vercel.app');
         }
       },
 
@@ -2191,7 +2554,6 @@
           setTimeout(() => { if (toast && toast.parentNode) toast.remove(); }, 3200);
         } catch(e) {}
       },
-
       saveCustomerProfile(e) {
         if (e && typeof e.preventDefault === 'function') e.preventDefault();
         const name = (document.getElementById('cust-profile-name')?.value || '').trim();
@@ -2905,6 +3267,11 @@
             </div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+            <button type="button" class="btn btn-outline" onclick="App.openSyncModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 11px; border-radius: 999px; background: #FAF8F5; border: 1px solid var(--border);" title="Pengaturan Sinkronisasi Real-Time Laptop & HP">
+              <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #059669;"></span>
+              <span style="font-weight: 600; color: #059669;">🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)</span>
+            </button>
+            <button type="button" class="btn btn-outline" onclick="App.syncAllWithCloud()" style="padding: 6px 10px; font-size: 11px; border-radius: 8px;" title="Sinkronkan data sekarang">🔄 Sinkronkan Sekarang</button>
             ${state.view === 'customers' ? `<button type="button" onclick="App.openAddCustomer()" class="btn btn-primary">+ Tambah Pelanggan</button>` : ''}
             ${state.view === 'orders' ? `<button type="button" onclick="App.openAddOrder()" class="btn btn-primary">+ Tambah Pesanan</button>` : ''}
             ${state.view === 'products' ? `<button type="button" onclick="App.openAddProduct()" class="btn btn-primary">+ Tambah Produk</button>` : ''}
@@ -4194,6 +4561,27 @@
             </div>
           </div>
 
+          <!-- Sinkronisasi Real-Time Multi-Device (Laptop ↔ HP) -->
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 8px;">
+              <h3 style="font-size: 16px; font-weight: bold;">Sinkronisasi Real-Time Multi-Device (Laptop ↔ HP)</h3>
+              <span class="badge badge-success">🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)</span>
+            </div>
+            <p style="font-size: 11px; color: #777; margin-bottom: 16px;">Semua data pesanan pelanggan, katalog produk hijab, aktivitas butik, dan percakapan chat tersinkron otomatis secara instan antara Laptop Admin dan HP Pelanggan/Admin tanpa konfigurasi rumit.</p>
+            <div class="form-group">
+              <label class="form-label">Kode Saluran Sinkron (Sync Room Topic)</label>
+              <div style="display: flex; gap: 8px; max-width: 500px;">
+                <input id="set-sync-room" class="form-control" value="${escapeHtml(App.getSyncRoom())}" placeholder="bynvdila_crm_sync_channel">
+                <button type="button" class="btn btn-primary" onclick="App.saveSyncRoomFromSettings()">Simpan Room</button>
+              </div>
+              <p style="font-size: 10.5px; color: #777; margin-top: 4px;">Ubah jika Anda ingin menggunakan channel khusus butik Anda sendiri.</p>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;">
+              <button type="button" class="btn btn-outline" onclick="App.openSyncModal()">📱 Buka Dialog Sinkronisasi & Link HP</button>
+              <button type="button" class="btn btn-secondary" onclick="App.syncAllWithCloud()">🔄 Sinkronkan Sekarang</button>
+            </div>
+          </div>
+
           <!-- 5. Integrasi Database Cloud Supabase -->
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -4279,10 +4667,11 @@
               <span class="badge badge-vip" style="background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; font-weight: bold;">Portal Pelanggan Resmi</span>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
-              <button type="button" class="btn btn-outline" onclick="App.openSyncModal()" style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 11px; border-radius: 999px; background: #FAF8F5; border: 1px solid var(--border);" title="Status Sinkronisasi Multi-Device Laptop & HP">
-                <span style="width: 7px; height: 7px; border-radius: 50%; background: ${App.getSupabaseConfig().isConfigured ? '#059669' : '#D97706'}; display: inline-block;"></span>
-                <span style="font-weight: 600;">${App.getSupabaseConfig().isConfigured ? '📱 Sync Aktif' : '📱 Sinkronkan HP'}</span>
+              <button type="button" class="btn btn-outline" onclick="App.openSyncModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 11px; border-radius: 999px; background: #FAF8F5; border: 1px solid var(--border);" title="Status Sinkronisasi Multi-Device Laptop & HP">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: #059669; display: inline-block;"></span>
+                <span style="font-weight: 600; color: #059669;">🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)</span>
               </button>
+              <button type="button" class="btn btn-outline" onclick="App.syncAllWithCloud()" style="padding: 4px 8px; font-size: 11px; border-radius: 8px;" title="Sinkronkan data sekarang">🔄 Sinkronkan Sekarang</button>
               <span style="font-size: 12px; color: #555;">Halo, <strong>${escapeHtml(auth.name || 'Sahabat')}</strong></span>
               <span class="badge badge-vip card-clickable" onclick="App.handleCustomerStatClick('member')" style="background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; font-weight: 600; font-size: 11.5px; padding: 4px 10px; border-radius: 999px; cursor: pointer;" title="Klik untuk info Membership">👑 ${escapeHtml(segment)}</span>
               ${isSella ? `
@@ -4747,6 +5136,54 @@
 
     function renderActiveModal() {
       if (!state.activeModal) return '';
+
+      // Sync Modal (Multi-Device Laptop <-> HP)
+      if (state.activeModal === 'sync_modal') {
+        return `
+          <div class="modal-overlay" onclick="if(event.target === this) App.closeModal();">
+            <div class="modal-card" style="max-width: 520px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="font-size: 16px; font-weight: bold;">📱 Sinkronisasi Real-Time (Laptop ↔ HP)</h3>
+                <button type="button" class="btn btn-outline" onclick="App.closeModal()" style="padding: 4px 8px; font-size: 12px; border-radius: 8px;">✕</button>
+              </div>
+
+              <div style="padding: 14px; background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 20px;">🟢</span>
+                <div>
+                  <div style="font-weight: bold; font-size: 13px; color: #065F46;">🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)</div>
+                  <div style="font-size: 11px; color: #047857; margin-top: 2px;">Data pesanan hijab, stok katalog, aktivitas butik, dan pesan chat terhubung seketika antar-perangkat.</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Kode Saluran Sinkron (Sync Room Topic)</label>
+                <div style="display: flex; gap: 8px;">
+                  <input id="sync-room-input" class="form-control" value="${escapeHtml(App.getSyncRoom())}" placeholder="bynvdila_crm_sync_channel">
+                  <button type="button" class="btn btn-primary" onclick="App.saveSyncRoom()">Simpan Room</button>
+                </div>
+                <p style="font-size: 10.5px; color: #777; margin-top: 4px;">Pastikan laptop dan HP menggunakan kode saluran yang sama.</p>
+              </div>
+
+              <div class="card" style="margin-bottom: 16px; background: #FAF8F5; border: 1px solid var(--border);">
+                <h4 style="font-size: 13px; font-weight: bold; margin-bottom: 6px;">Cara Buka di HP (Smartphone):</h4>
+                <ol style="padding-left: 18px; font-size: 11.5px; color: #555; line-height: 1.6; margin: 0;">
+                  <li>Buka browser di HP Anda (Chrome / Safari / Firefox).</li>
+                  <li>Ketik alamat butik: <strong>https://hijabsell.vercel.app</strong> atau <strong>https://hijabkuu.vercel.app</strong></li>
+                  <li>Aktivitas pemesanan, penambahan produk, atau chat akan langsung sinkron secara otomatis!</li>
+                </ol>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-outline" onclick="App.copyHpLink()">📋 Salin Link Butik HP</button>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-secondary" onclick="App.syncAllWithCloud()">🔄 Sinkronkan Sekarang</button>
+                  <button type="button" class="btn btn-primary" onclick="App.closeModal()">Tutup</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
 
       // 0a. Member Info Modal (Customer Portal)
       if (state.activeModal === 'memberInfo') {

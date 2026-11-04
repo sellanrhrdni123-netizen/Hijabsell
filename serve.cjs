@@ -53,6 +53,8 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Server running at http://localhost:${PORT}/`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running at:`);
+  console.log(`- Laptop: http://localhost:${PORT}/`);
+  console.log(`- HP:     http://172.20.10.14:${PORT}/`);
 });

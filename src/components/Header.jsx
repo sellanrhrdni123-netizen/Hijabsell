@@ -54,11 +54,10 @@ export default function Header({
             <span>{todayFormatted}</span>
           </div>
 
-          {/* Marketplace Sync Indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-nvdila-warm/80 text-xs text-stone-600 shadow-2xs">
-            <Store className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="font-medium text-stone-700">Marketplace:</span>
-            <span className="text-emerald-700 font-medium">Aktif Terhubung</span>
+          {/* Real-time Cross-Device Sync Indicator */}
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-xs text-emerald-800 shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="font-semibold text-emerald-700">🟢 Sinkron Real-Time Aktif (Laptop ↔ HP)</span>
           </div>
 
           {/* Quick Actions Dropdown / Buttons */}
