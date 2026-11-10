@@ -581,6 +581,18 @@
     function saveUsers(users) {
       try {
         localStorage.setItem(USERS_KEY, JSON.stringify(users));
+        if (typeof window !== 'undefined' && window._byNvdilaSyncChannel) {
+          window._byNvdilaSyncChannel.postMessage({ type: 'USERS_UPDATED' });
+        }
+      } catch(e) {}
+      try {
+        if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+          App.broadcastCloudSync({
+            type: 'USERS_UPDATE',
+            users: users,
+            timestamp: Date.now()
+          });
+        }
       } catch(e) {}
     }
 
@@ -1053,13 +1065,31 @@
       if (!state.chats || state.chats.length === 0) {
         state.chats = getChats();
       }
+      try {
+        if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+          App.broadcastCloudSync({
+            type: 'LOAD_SAMPLE_DATA',
+            data: state.data,
+            timestamp: Date.now()
+          });
+        }
+      } catch(e) {}
       render();
     }
 
     function resetEmptyState() {
-      state.data = { customers: [], products: [], orders: [], followups: [], activities: [] };
+      state.data = { customers: [], products: [], orders: [], followups: [], activities: [], deletedIds: [] };
       saveData(state.data);
       state.selectedCustomerId = null;
+      try {
+        if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+          App.broadcastCloudSync({
+            type: 'RESET_EMPTY_STATE',
+            data: state.data,
+            timestamp: Date.now()
+          });
+        }
+      } catch(e) {}
       render();
     }
 
@@ -1372,7 +1402,7 @@
           return;
         }
 
-        // 2. Consistent password verification (Requirement 7)
+        // 2. Consistent password verification & Account Activation
         let match = (state.data.customers || []).find(c => c.email && c.email.toLowerCase() === email.toLowerCase());
         const custName = enteredName || (match ? match.name : (isSella ? 'Sella Nurhardiani' : email.split('@')[0]));
         const custPhone = enteredPhone || (match ? match.phone : '081234567890');
@@ -1380,7 +1410,22 @@
 
         const users = getUsers();
         const userKey = email.toLowerCase();
-        const existingUser = users[userKey];
+        let existingUser = users[userKey];
+
+        // If user already exists in CRM database (customers) but not yet in local users dictionary, activate account directly!
+        if (!existingUser && match) {
+          existingUser = {
+            email: userKey,
+            password: password,
+            name: match.name || custName,
+            role: 'customer',
+            phone: match.phone || custPhone,
+            address: match.address || custAddress,
+            createdAt: new Date().toISOString()
+          };
+          users[userKey] = existingUser;
+          saveUsers(users);
+        }
 
         // If in login mode (and not Sella and not registration form with enteredName), user MUST already have an account!
         if (!isRegister && !isSella && !enteredName) {
@@ -1402,6 +1447,10 @@
             state.authError = 'Kata sandi yang Anda masukkan salah. Silakan periksa kembali.';
             render();
             return;
+          } else if (!existingUser.password && password) {
+            existingUser.password = password;
+            users[userKey] = existingUser;
+            saveUsers(users);
           }
         } else {
           if (isRegister || enteredName) {
@@ -1574,6 +1623,16 @@
         }
         state.data.customers = syncAllCustomerSegments(state.data.customers, state.data.orders);
         saveData(state.data);
+        try {
+          if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+            App.broadcastCloudSync({
+              type: 'CUSTOMER_UPDATE',
+              customer: newCust,
+              data: state.data,
+              timestamp: Date.now()
+            });
+          }
+        } catch(e) {}
         state.activeModal = null;
         state.modalPayload = null;
         render();
@@ -1584,7 +1643,20 @@
         if (confirm('Hapus pelanggan ' + name + '?')) {
           state.data.customers = (state.data.customers || []).filter(x => x.id !== id);
           if (state.selectedCustomerId === id) state.selectedCustomerId = null;
+          state.data.deletedIds = state.data.deletedIds || [];
+          if (!state.data.deletedIds.includes(id)) state.data.deletedIds.push(id);
           saveData(state.data);
+          try {
+            if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+              App.broadcastCloudSync({
+                type: 'CUSTOMER_DELETE',
+                customerId: id,
+                deletedIds: state.data.deletedIds,
+                data: state.data,
+                timestamp: Date.now()
+              });
+            }
+          } catch(e) {}
           render();
         }
       },
@@ -1750,12 +1822,15 @@
         const name = p ? p.name : id;
         if (confirm('Hapus produk ' + name + '?')) {
           state.data.products = (state.data.products || []).filter(x => x.id !== id);
+          state.data.deletedIds = state.data.deletedIds || [];
+          if (!state.data.deletedIds.includes(id)) state.data.deletedIds.push(id);
           saveData(state.data);
           try {
             if (typeof App !== 'undefined' && App.broadcastCloudSync) {
               App.broadcastCloudSync({
                 type: 'PRODUCT_DELETE',
                 productId: id,
+                deletedIds: state.data.deletedIds,
                 data: state.data,
                 timestamp: Date.now()
               });
@@ -1824,6 +1899,16 @@
             return !(matchId || matchEmail);
           });
           saveChats(state.chats);
+          try {
+            if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+              App.broadcastCloudSync({
+                type: 'CHAT_CLEAR',
+                chats: state.chats,
+                targetCustId: custIdStr,
+                timestamp: Date.now()
+              });
+            }
+          } catch(e) {}
           render();
         }
       },
@@ -1876,6 +1961,16 @@
             return !(matchId || matchEmail);
           });
           saveChats(state.chats);
+          try {
+            if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+              App.broadcastCloudSync({
+                type: 'CHAT_CLEAR',
+                chats: state.chats,
+                targetCustId: auth.customerId || auth.email,
+                timestamp: Date.now()
+              });
+            }
+          } catch(e) {}
           render();
         }
       },
@@ -2055,7 +2150,7 @@
         } catch(e) {}
       },
 
-      handleIncomingSync(rawMsg) {
+            handleIncomingSync(rawMsg) {
         try {
           if (!rawMsg) return;
           let packet;
@@ -2071,7 +2166,173 @@
           const dummyNames = ['Zahra Amelia Putri', 'Nabila Khairunnisa', 'Fathia Rahmadina', 'Dinda Ayu Maharani', 'Siti Hanifah'];
           const dummyProdIds = ['PRD-001', 'PRD-002', 'PRD-003', 'PRD-004', 'PRD-005', 'PRD-006'];
 
-          // 1. Merge Products, Orders, Customers, Activities, Followups
+          // 0. Full Reset or Sample Data
+          if (packet.type === 'RESET_EMPTY_STATE') {
+            state.data = { customers: [], products: [], orders: [], followups: [], activities: [], deletedIds: [] };
+            state.selectedCustomerId = null;
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+              }
+            } catch(e) {}
+            render();
+            return;
+          }
+          if (packet.type === 'LOAD_SAMPLE_DATA' && packet.data) {
+            state.data = packet.data;
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+              }
+            } catch(e) {}
+            render();
+            return;
+          }
+
+          // 1. Maintain & Enforce Deletion Records (Tombstones)
+          const remoteDeletedIds = new Set([
+            ...(packet.deletedIds || []),
+            ...(packet.data && packet.data.deletedIds ? packet.data.deletedIds : [])
+          ]);
+          if (packet.type === 'PRODUCT_DELETE' && packet.productId) remoteDeletedIds.add(packet.productId);
+          if (packet.type === 'ORDER_DELETE' && packet.orderId) remoteDeletedIds.add(packet.orderId);
+          if (packet.type === 'CUSTOMER_DELETE' && packet.customerId) remoteDeletedIds.add(packet.customerId);
+          if (packet.type === 'FOLLOWUP_DELETE' && packet.followupId) remoteDeletedIds.add(packet.followupId);
+
+          state.data.deletedIds = state.data.deletedIds || [];
+          remoteDeletedIds.forEach(id => {
+            if (!state.data.deletedIds.includes(id)) state.data.deletedIds.push(id);
+          });
+          const allDeletedIds = new Set(state.data.deletedIds);
+
+          // Purge locally any item marked deleted
+          const beforeP = (state.data.products || []).length;
+          const beforeO = (state.data.orders || []).length;
+          const beforeC = (state.data.customers || []).length;
+          const beforeF = (state.data.followups || []).length;
+
+          state.data.products = (state.data.products || []).filter(p => !allDeletedIds.has(p.id));
+          state.data.orders = (state.data.orders || []).filter(o => !allDeletedIds.has(o.id));
+          state.data.customers = (state.data.customers || []).filter(c => !allDeletedIds.has(c.id));
+          state.data.followups = (state.data.followups || []).filter(f => !allDeletedIds.has(f.id));
+
+          if (state.data.products.length !== beforeP || state.data.orders.length !== beforeO || state.data.customers.length !== beforeC || state.data.followups.length !== beforeF) {
+            hasChanges = true;
+          }
+
+          // Direct single product deletion
+          if (packet.type === 'PRODUCT_DELETE' && packet.productId) {
+            const beforeLen = (state.data.products || []).length;
+            state.data.products = (state.data.products || []).filter(function(p) { return p.id !== packet.productId; });
+            if ((state.data.products || []).length !== beforeLen) hasChanges = true;
+          }
+
+          // Direct single order deletion
+          if (packet.type === 'ORDER_DELETE' && packet.orderId) {
+            const beforeLen = (state.data.orders || []).length;
+            state.data.orders = (state.data.orders || []).filter(function(o) { return o.id !== packet.orderId; });
+            if (Array.isArray(packet.products)) state.data.products = packet.products.filter(p => !allDeletedIds.has(p.id));
+            state.data.customers = syncAllCustomerSegments(state.data.customers, state.data.orders);
+            hasChanges = true;
+          }
+
+          // Direct single customer deletion
+          if (packet.type === 'CUSTOMER_DELETE' && packet.customerId) {
+            const beforeLen = (state.data.customers || []).length;
+            state.data.customers = (state.data.customers || []).filter(function(c) { return c.id !== packet.customerId; });
+            if (state.selectedCustomerId === packet.customerId) state.selectedCustomerId = null;
+            if ((state.data.customers || []).length !== beforeLen) hasChanges = true;
+          }
+
+          // Direct single followup deletion
+          if (packet.type === 'FOLLOWUP_DELETE' && packet.followupId) {
+            const beforeLen = (state.data.followups || []).length;
+            state.data.followups = (state.data.followups || []).filter(function(f) { return f.id !== packet.followupId; });
+            if ((state.data.followups || []).length !== beforeLen) hasChanges = true;
+          }
+
+          // Direct single product update
+          if (packet.product && typeof packet.product === 'object' && packet.product.id) {
+            if (!allDeletedIds.has(packet.product.id)) {
+              const rp = packet.product;
+              const localProds = state.data.products || [];
+              const idx = localProds.findIndex(function(lp) { return lp.id === rp.id; });
+              if (idx === -1) {
+                localProds.unshift(rp);
+                hasChanges = true;
+              } else {
+                localProds[idx] = { ...localProds[idx], ...rp };
+                hasChanges = true;
+              }
+              state.data.products = localProds;
+            }
+          }
+
+          // Direct products array update (e.g. stock adjustment)
+          if (Array.isArray(packet.products)) {
+            state.data.products = packet.products.filter(p => !allDeletedIds.has(p.id));
+            hasChanges = true;
+          }
+
+          // Direct single order creation/update
+          if (packet.order && typeof packet.order === 'object' && packet.order.id && !allDeletedIds.has(packet.order.id)) {
+            const ro = packet.order;
+            const localOrders = state.data.orders || [];
+            const oIdx = localOrders.findIndex(function(lo) { return lo.id === ro.id; });
+            if (oIdx === -1) {
+              localOrders.unshift(ro);
+              hasChanges = true;
+            } else {
+              localOrders[oIdx] = { ...localOrders[oIdx], ...ro };
+              hasChanges = true;
+            }
+            state.data.orders = localOrders;
+          }
+
+          // Direct single customer creation/update
+          if (packet.customer && typeof packet.customer === 'object' && (packet.customer.id || packet.customer.email)) {
+            const rc = packet.customer;
+            if (!allDeletedIds.has(rc.id)) {
+              const localCusts = state.data.customers || [];
+              const cIdx = localCusts.findIndex(function(lc) {
+                return (rc.id && lc.id === rc.id) || (rc.email && lc.email && lc.email.toLowerCase() === rc.email.toLowerCase());
+              });
+              if (cIdx === -1) {
+                localCusts.unshift(rc);
+                hasChanges = true;
+              } else {
+                localCusts[cIdx] = { ...localCusts[cIdx], ...rc };
+                hasChanges = true;
+              }
+              state.data.customers = syncAllCustomerSegments(localCusts, state.data.orders);
+            }
+          }
+
+          // Direct single followup update
+          if (packet.followup && typeof packet.followup === 'object' && packet.followup.id && !allDeletedIds.has(packet.followup.id)) {
+            const rf = packet.followup;
+            const localFlws = state.data.followups || [];
+            const fIdx = localFlws.findIndex(function(lf) { return lf.id === rf.id; });
+            if (fIdx === -1) {
+              localFlws.unshift(rf);
+              hasChanges = true;
+            } else {
+              localFlws[fIdx] = { ...localFlws[fIdx], ...rf };
+              hasChanges = true;
+            }
+            state.data.followups = localFlws;
+          }
+
+          // Direct single activity update
+          if (packet.activity && typeof packet.activity === 'object' && packet.activity.id) {
+            const localActs = state.data.activities || [];
+            if (!localActs.some(a => a.id === packet.activity.id)) {
+              state.data.activities = [packet.activity, ...localActs].slice(0, 150);
+              hasChanges = true;
+            }
+          }
+
+          // 2. Merge Products, Orders, Customers, Activities, Followups from packet.data
           if (packet.data && typeof packet.data === 'object') {
             const remote = packet.data;
 
@@ -2079,7 +2340,7 @@
             if (Array.isArray(remote.products)) {
               const localProds = state.data.products || [];
               remote.products.forEach(function(rp) {
-                if (!rp || !rp.id) return;
+                if (!rp || !rp.id || allDeletedIds.has(rp.id)) return;
                 if (dummyProdIds.includes(rp.id) && !rp.name) return;
                 const idx = localProds.findIndex(function(lp) { return lp.id === rp.id; });
                 if (idx === -1) {
@@ -2093,53 +2354,14 @@
                   }
                 }
               });
-              state.data.products = localProds;
-            }
-
-            // Direct single product update
-            if (packet.product && typeof packet.product === 'object' && packet.product.id) {
-              const rp = packet.product;
-              const localProds = state.data.products || [];
-              const idx = localProds.findIndex(function(lp) { return lp.id === rp.id; });
-              if (idx === -1) {
-                localProds.unshift(rp);
-                hasChanges = true;
-              } else {
-                localProds[idx] = { ...localProds[idx], ...rp };
-                hasChanges = true;
-              }
-              state.data.products = localProds;
-            }
-
-            // Direct single product deletion
-            if (packet.type === 'PRODUCT_DELETE' && packet.productId) {
-              const beforeLen = (state.data.products || []).length;
-              state.data.products = (state.data.products || []).filter(function(p) { return p.id !== packet.productId; });
-              if ((state.data.products || []).length !== beforeLen) {
-                hasChanges = true;
-              }
-            }
-
-            // Direct single order creation handling
-            if (packet.order && typeof packet.order === 'object' && packet.order.id) {
-              const ro = packet.order;
-              const localOrders = state.data.orders || [];
-              const oIdx = localOrders.findIndex(function(lo) { return lo.id === ro.id; });
-              if (oIdx === -1) {
-                localOrders.unshift(ro);
-                hasChanges = true;
-              } else {
-                localOrders[oIdx] = { ...localOrders[oIdx], ...ro };
-                hasChanges = true;
-              }
-              state.data.orders = localOrders;
+              state.data.products = localProds.filter(p => !allDeletedIds.has(p.id));
             }
 
             // Merge Orders
             if (Array.isArray(remote.orders)) {
               const localOrders = state.data.orders || [];
               remote.orders.forEach(function(ro) {
-                if (!ro || !ro.id || dummyNames.includes(ro.customerName) || ['ORD-2026-001', 'ORD-2026-002', 'ORD-2026-003', 'ORD-2026-004'].includes(ro.id)) return;
+                if (!ro || !ro.id || allDeletedIds.has(ro.id) || dummyNames.includes(ro.customerName) || ['ORD-2026-001', 'ORD-2026-002', 'ORD-2026-003', 'ORD-2026-004'].includes(ro.id)) return;
                 const idx = localOrders.findIndex(function(lo) { return lo.id === ro.id; });
                 if (idx === -1) {
                   localOrders.unshift(ro);
@@ -2152,14 +2374,14 @@
                   }
                 }
               });
-              state.data.orders = localOrders;
+              state.data.orders = localOrders.filter(o => !allDeletedIds.has(o.id));
             }
 
             // Merge Customers
             if (Array.isArray(remote.customers)) {
               const localCusts = state.data.customers || [];
               remote.customers.forEach(function(rc) {
-                if (!rc || (!rc.id && !rc.email) || dummyNames.includes(rc.name) || ['CUST-001', 'CUST-002', 'CUST-003', 'CUST-004', 'CUST-005'].includes(rc.id)) return;
+                if (!rc || (!rc.id && !rc.email) || (rc.id && allDeletedIds.has(rc.id)) || dummyNames.includes(rc.name) || ['CUST-001', 'CUST-002', 'CUST-003', 'CUST-004', 'CUST-005'].includes(rc.id)) return;
                 const idx = localCusts.findIndex(function(lc) {
                   return (rc.id && lc.id === rc.id) || (rc.email && lc.email && lc.email.toLowerCase() === rc.email.toLowerCase());
                 });
@@ -2171,7 +2393,7 @@
                   hasChanges = true;
                 }
               });
-              state.data.customers = syncAllCustomerSegments(localCusts, state.data.orders);
+              state.data.customers = syncAllCustomerSegments(localCusts.filter(c => !allDeletedIds.has(c.id)), state.data.orders);
             }
 
             // Merge Activities
@@ -2192,17 +2414,34 @@
               const localFlws = state.data.followups || [];
               const flwIds = new Set(localFlws.map(function(f) { return f.id; }));
               const newFlws = remote.followups.filter(function(f) {
-                return f && f.id && !flwIds.has(f.id) && !dummyNames.includes(f.customerName);
+                return f && f.id && !allDeletedIds.has(f.id) && !flwIds.has(f.id) && !dummyNames.includes(f.customerName);
               });
               if (newFlws.length > 0) {
-                state.data.followups = [...newFlws, ...localFlws];
+                state.data.followups = [...newFlws, ...localFlws].filter(f => !allDeletedIds.has(f.id));
                 hasChanges = true;
               }
             }
           }
 
-          // 2. Merge Chats
-          if (Array.isArray(packet.chats)) {
+          // 3. Merge or Clear Chats
+          if (packet.type === 'CHAT_CLEAR') {
+            if (packet.targetCustId) {
+              const target = String(packet.targetCustId).trim().toLowerCase();
+              state.chats = (state.chats || []).filter(m => {
+                const mId = (m.customerId ? String(m.customerId) : '').toLowerCase();
+                const mEmail = (m.customerEmail ? String(m.customerEmail) : '').toLowerCase();
+                return mId !== target && mEmail !== target;
+              });
+            } else if (Array.isArray(packet.chats)) {
+              state.chats = packet.chats;
+            }
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(CHATS_KEY, JSON.stringify(state.chats));
+              }
+            } catch(e) {}
+            hasChanges = true;
+          } else if (Array.isArray(packet.chats)) {
             const localChats = state.chats || [];
             const chatKeys = new Set(localChats.map(function(c) {
               return c.id || (c.sender + '_' + c.timestamp + '_' + c.text);
@@ -2236,7 +2475,28 @@
             }
           }
 
-          // 3. Merge Store Settings
+          // 4. Merge Users (Seamless Cross-Device Login)
+          if (packet.users && typeof packet.users === 'object') {
+            const localUsers = getUsers() || {};
+            let usersUpdated = false;
+            Object.keys(packet.users).forEach(function(uKey) {
+              const rUser = packet.users[uKey];
+              if (rUser && typeof rUser === 'object') {
+                const lUser = localUsers[uKey];
+                if (!lUser || lUser.password !== rUser.password || lUser.name !== rUser.name || lUser.role !== rUser.role || lUser.phone !== rUser.phone || lUser.address !== rUser.address) {
+                  localUsers[uKey] = { ...(lUser || {}), ...rUser };
+                  usersUpdated = true;
+                }
+              }
+            });
+            if (usersUpdated) {
+              try {
+                localStorage.setItem(USERS_KEY, JSON.stringify(localUsers));
+              } catch(e) {}
+            }
+          }
+
+          // 5. Merge Store Settings
           if (packet.storeSettings && typeof packet.storeSettings === 'object') {
             state.storeSettings = { ...(state.storeSettings || {}), ...packet.storeSettings };
             try {
@@ -2254,7 +2514,6 @@
               }
             } catch(e) {}
             render();
-            App.showSyncToast('🟢 Data baru tersinkronisasi (Laptop ↔ HP)!');
           }
         } catch(err) {
           console.warn('Sync merge error:', err);
@@ -2355,9 +2614,11 @@
                 .then(function(res) { return res.json(); })
                 .then(function(serverState) {
                   if (serverState && typeof serverState === 'object') {
+                    if (serverState.deletedIds) App.handleIncomingSync({ deletedIds: serverState.deletedIds });
                     if (serverState.data) App.handleIncomingSync({ data: serverState.data });
                     if (serverState.chats) App.handleIncomingSync({ chats: serverState.chats });
                     if (serverState.storeSettings) App.handleIncomingSync({ storeSettings: serverState.storeSettings });
+                    if (serverState.users) App.handleIncomingSync({ users: serverState.users });
                   }
                 })
                 .catch(function() {});
@@ -2871,6 +3132,19 @@
         ];
         state.data.customers = syncAllCustomerSegments(state.data.customers, state.data.orders);
         saveData(state.data);
+        try {
+          if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+            App.broadcastCloudSync({
+              type: 'ORDER_CREATE',
+              order: newOrd,
+              products: state.data.products,
+              customer: c,
+              activity: state.data.activities[0],
+              data: state.data,
+              timestamp: Date.now()
+            });
+          }
+        } catch(e) {}
         state.activeModal = null;
         state.modalPayload = null;
         render();
@@ -2881,6 +3155,16 @@
           ord.orderStatus = newStatus;
           state.data.customers = syncAllCustomerSegments(state.data.customers, state.data.orders);
           saveData(state.data);
+          try {
+            if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+              App.broadcastCloudSync({
+                type: 'ORDER_UPDATE',
+                order: ord,
+                data: state.data,
+                timestamp: Date.now()
+              });
+            }
+          } catch(e) {}
           render();
         }
       },
@@ -2899,7 +3183,21 @@
         }
         state.data.orders = (state.data.orders || []).filter(x => x.id !== orderId);
         state.data.customers = syncAllCustomerSegments(state.data.customers, state.data.orders);
+        state.data.deletedIds = state.data.deletedIds || [];
+        if (!state.data.deletedIds.includes(orderId)) state.data.deletedIds.push(orderId);
         saveData(state.data);
+        try {
+          if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+            App.broadcastCloudSync({
+              type: 'ORDER_DELETE',
+              orderId: orderId,
+              deletedIds: state.data.deletedIds,
+              products: state.data.products,
+              data: state.data,
+              timestamp: Date.now()
+            });
+          }
+        } catch(e) {}
         render();
       },
       cancelCustomerOrder(orderId) {
@@ -2951,6 +3249,18 @@
         // Recalculate customer segments
         state.data.customers = syncAllCustomerSegments(state.data.customers, state.data.orders);
         saveData(state.data);
+        try {
+          if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+            App.broadcastCloudSync({
+              type: 'ORDER_UPDATE',
+              order: ord,
+              products: state.data.products,
+              activity: state.data.activities[0],
+              data: state.data,
+              timestamp: Date.now()
+            });
+          }
+        } catch(e) {}
         alert('Pesanan ' + orderId + ' berhasil dibatalkan. Stok produk telah dikembalikan.');
         render();
       },
@@ -2990,6 +3300,16 @@
 
         state.data.followups = [flw, ...(state.data.followups || [])];
         saveData(state.data);
+        try {
+          if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+            App.broadcastCloudSync({
+              type: 'FOLLOWUP_UPDATE',
+              followup: flw,
+              data: state.data,
+              timestamp: Date.now()
+            });
+          }
+        } catch(e) {}
         state.activeModal = null;
         state.modalPayload = null;
         render();
@@ -2999,13 +3319,36 @@
         if (item) {
           item.status = item.status === 'Selesai' ? 'Belum Dihubungi' : 'Selesai';
           saveData(state.data);
+          try {
+            if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+              App.broadcastCloudSync({
+                type: 'FOLLOWUP_UPDATE',
+                followup: item,
+                data: state.data,
+                timestamp: Date.now()
+              });
+            }
+          } catch(e) {}
           render();
         }
       },
       deleteFollowup(id) {
         if (confirm('Hapus jadwal follow-up ini?')) {
           state.data.followups = (state.data.followups || []).filter(x => x.id !== id);
+          state.data.deletedIds = state.data.deletedIds || [];
+          if (!state.data.deletedIds.includes(id)) state.data.deletedIds.push(id);
           saveData(state.data);
+          try {
+            if (typeof App !== 'undefined' && App.broadcastCloudSync) {
+              App.broadcastCloudSync({
+                type: 'FOLLOWUP_DELETE',
+                followupId: id,
+                deletedIds: state.data.deletedIds,
+                data: state.data,
+                timestamp: Date.now()
+              });
+            }
+          } catch(e) {}
           render();
         }
       },
