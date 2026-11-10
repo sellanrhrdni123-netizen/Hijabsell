@@ -686,7 +686,12 @@
     function syncAllCustomerSegments(customers, orders) {
       return (customers || []).map(c => {
         const cOrders = (orders || []).filter(o => (o.customerId === c.id || (c.name && o.customerName === c.name)) && o.orderStatus !== 'Cancelled');
-        return { ...c, segment: calculateSegment(c, cOrders) };
+        const activeCount = cOrders.length;
+        const activeSpent = cOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
+        const res = { ...c, segment: calculateSegment(c, cOrders) };
+        if (c.totalOrders !== undefined) res.totalOrders = activeCount;
+        if (c.totalSpent !== undefined) res.totalSpent = activeSpent;
+        return res;
       });
     }
 
@@ -1228,8 +1233,10 @@
       ];
 
       const syncedCusts = syncAllCustomerSegments(updatedCustomers, updatedOrders);
+      const remainingDeletedIds = (state.data.deletedIds || []).filter(x => x !== orderId);
 
       state.data = {
+        deletedIds: remainingDeletedIds,
         customers: syncedCusts,
         products: updatedProducts,
         orders: updatedOrders,
@@ -1621,6 +1628,9 @@
         } else {
           state.data.customers = [newCust, ...(state.data.customers || [])];
         }
+        if (state.data.deletedIds) {
+          state.data.deletedIds = state.data.deletedIds.filter(x => x !== custId);
+        }
         state.data.customers = syncAllCustomerSegments(state.data.customers, state.data.orders);
         saveData(state.data);
         try {
@@ -1797,6 +1807,9 @@
           state.data.products = (state.data.products || []).map(x => x.id === p.id ? newProd : x);
         } else {
           state.data.products = [newProd, ...(state.data.products || [])];
+        }
+        if (state.data.deletedIds) {
+          state.data.deletedIds = state.data.deletedIds.filter(x => x !== prodId);
         }
         saveData(state.data);
 
@@ -2128,9 +2141,18 @@
             ...payload
           };
 
-          // 1. Localhost Native Sync: Broadcast directly to local server if running on HTTP
-          if (typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http')) {
+          // 1. Localhost Native Sync: Broadcast directly to local server if running on HTTP or file:
+          const isFileProto = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
+          const isHttp = typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http');
+          
+          if (isHttp) {
             fetch('/api/sync/broadcast', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(packet)
+            }).catch(function() {});
+          } else if (isFileProto) {
+            fetch('http://localhost:3000/api/sync/broadcast', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(packet)
@@ -2222,6 +2244,13 @@
 
           // Direct single product deletion
           if (packet.type === 'PRODUCT_DELETE' && packet.productId) {
+            if (state.activeModal === 'purchase' || state.activeModal === 'product') {
+              if (state.modalPayload && state.modalPayload.id === packet.productId) {
+                state.activeModal = null;
+                state.modalPayload = null;
+                alert('Produk ini telah dihapus oleh admin.');
+              }
+            }
             const beforeLen = (state.data.products || []).length;
             state.data.products = (state.data.products || []).filter(function(p) { return p.id !== packet.productId; });
             if ((state.data.products || []).length !== beforeLen) hasChanges = true;
@@ -2229,6 +2258,13 @@
 
           // Direct single order deletion
           if (packet.type === 'ORDER_DELETE' && packet.orderId) {
+            if (state.activeModal === 'order-detail') {
+              if (state.modalPayload && state.modalPayload.id === packet.orderId) {
+                state.activeModal = null;
+                state.modalPayload = null;
+                alert('Pesanan ini telah dihapus.');
+              }
+            }
             const beforeLen = (state.data.orders || []).length;
             state.data.orders = (state.data.orders || []).filter(function(o) { return o.id !== packet.orderId; });
             if (Array.isArray(packet.products)) state.data.products = packet.products.filter(p => !allDeletedIds.has(p.id));
@@ -2238,6 +2274,23 @@
 
           // Direct single customer deletion
           if (packet.type === 'CUSTOMER_DELETE' && packet.customerId) {
+            if (state.activeModal === 'customer') {
+              if (state.modalPayload && state.modalPayload.id === packet.customerId) {
+                state.activeModal = null;
+                state.modalPayload = null;
+                alert('Data pelanggan ini telah dihapus.');
+              }
+            }
+            if (state.auth && state.auth.role === 'customer') {
+              const targetId = String(packet.customerId).toLowerCase();
+              const isMatch = (state.auth.customerId && String(state.auth.customerId).toLowerCase() === targetId) ||
+                (packet.customerEmail && state.auth.email && state.auth.email.toLowerCase() === packet.customerEmail.toLowerCase());
+              if (isMatch) {
+                alert('Akun pelanggan Anda telah dihapus oleh admin.');
+                App.logout();
+                return;
+              }
+            }
             const beforeLen = (state.data.customers || []).length;
             state.data.customers = (state.data.customers || []).filter(function(c) { return c.id !== packet.customerId; });
             if (state.selectedCustomerId === packet.customerId) state.selectedCustomerId = null;
@@ -2287,6 +2340,8 @@
               hasChanges = true;
             }
             state.data.orders = localOrders;
+            state.data.customers = syncAllCustomerSegments(state.data.customers, state.data.orders);
+            hasChanges = true;
           }
 
           // Direct single customer creation/update
@@ -2305,6 +2360,15 @@
                 hasChanges = true;
               }
               state.data.customers = syncAllCustomerSegments(localCusts, state.data.orders);
+              if (state.auth && state.auth.role === 'customer') {
+                const isMatch = (rc.id && state.auth.customerId === rc.id) || (rc.email && state.auth.email && state.auth.email.toLowerCase() === rc.email.toLowerCase());
+                if (isMatch) {
+                  if (rc.name) state.auth.name = rc.name;
+                  if (rc.phone) state.auth.phone = rc.phone;
+                  if (rc.address) state.auth.address = rc.address;
+                  saveAuth(state.auth);
+                }
+              }
             }
           }
 
@@ -2564,14 +2628,17 @@
               try { window._byNvdilaSSE.close(); } catch(e) {}
             }
             const room = App.getSyncRoom();
+            const isFileProto = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
             const isLocalHost = typeof window !== 'undefined' && window.location && (
               window.location.hostname === 'localhost' ||
               window.location.hostname === '127.0.0.1' ||
               window.location.port === '3000' ||
               /^172.|^192.168.|^10./.test(window.location.hostname)
             );
-            // On localhost use local Node server /api/sync/events; on Vercel or cloud use ntfy.sh SSE!
-            const sseUrl = isLocalHost ? '/api/sync/events' : ('https://ntfy.sh/' + encodeURIComponent(room) + '/sse');
+            const isLocal = isLocalHost || isFileProto;
+            const sseUrl = isLocal 
+              ? (isFileProto ? 'http://localhost:3000/api/sync/events' : '/api/sync/events') 
+              : ('https://ntfy.sh/' + encodeURIComponent(room) + '/sse');
             const sse = new EventSource(sseUrl);
             window._byNvdilaSSE = sse;
             sse.onmessage = function(event) {
@@ -2603,14 +2670,17 @@
         // 4. Initial load: fetch recent state from Localhost API or cloud relay
         try {
           if (typeof fetch !== 'undefined') {
+            const isFileProto = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
             const isLocalHost = typeof window !== 'undefined' && window.location && (
               window.location.hostname === 'localhost' ||
               window.location.hostname === '127.0.0.1' ||
               window.location.port === '3000' ||
               /^172.|^192.168.|^10./.test(window.location.hostname)
             );
-            if (isLocalHost) {
-              fetch('/api/sync/data', { cache: 'no-store' })
+            const isLocal = isLocalHost || isFileProto;
+            if (isLocal) {
+              const syncUrl = isFileProto ? 'http://localhost:3000/api/sync/data' : '/api/sync/data';
+              fetch(syncUrl, { cache: 'no-store' })
                 .then(function(res) { return res.json(); })
                 .then(function(serverState) {
                   if (serverState && typeof serverState === 'object') {
@@ -3120,6 +3190,9 @@
         };
 
         state.data.orders = [newOrd, ...(state.data.orders || [])];
+        if (state.data.deletedIds) {
+          state.data.deletedIds = state.data.deletedIds.filter(x => x !== newOrd.id);
+        }
         state.data.activities = [
           {
             id: 'ACT-' + Date.now(),
@@ -3299,6 +3372,9 @@
         };
 
         state.data.followups = [flw, ...(state.data.followups || [])];
+        if (state.data.deletedIds) {
+          state.data.deletedIds = state.data.deletedIds.filter(x => x !== flw.id);
+        }
         saveData(state.data);
         try {
           if (typeof App !== 'undefined' && App.broadcastCloudSync) {

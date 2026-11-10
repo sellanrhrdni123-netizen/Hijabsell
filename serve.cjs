@@ -7,17 +7,45 @@ const PORT = 3000;
 const DIR = __dirname;
 const DB_FILE = path.join(DIR, 'synced_db.json');
 
-function getLocalIp() {
+function getNetworkIps() {
+  const ips = [];
   try {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
+      const lowerName = name.toLowerCase();
+      const isVirtual = /vethernet|virtual|vbox|vmnet|docker|wsl|loopback|pseudo/i.test(lowerName);
       for (const iface of interfaces[name]) {
         if (iface.family === 'IPv4' && !iface.internal) {
-          return iface.address;
+          const addr = iface.address;
+          if (!addr.startsWith('169.254.') && !addr.startsWith('192.168.56.')) {
+            ips.push({
+              name,
+              address: addr,
+              isVirtual,
+              isWifi: /wi-fi|wifi|wireless|wlan/i.test(lowerName),
+              isEthernet: /ethernet|lan/i.test(lowerName) && !isVirtual
+            });
+          }
         }
       }
     }
   } catch (e) {}
+  return ips;
+}
+
+function getLocalIp() {
+  const all = getNetworkIps();
+  // 1. Prefer physical Wi-Fi interface
+  const wifi = all.find(i => i.isWifi && !i.isVirtual);
+  if (wifi) return wifi.address;
+  // 2. Prefer physical Ethernet interface
+  const eth = all.find(i => i.isEthernet && !i.isVirtual);
+  if (eth) return eth.address;
+  // 3. Prefer any non-virtual interface
+  const nonVirtual = all.find(i => !i.isVirtual);
+  if (nonVirtual) return nonVirtual.address;
+  // 4. Any interface found
+  if (all.length > 0) return all[0].address;
   return 'localhost';
 }
 
@@ -127,16 +155,84 @@ const server = http.createServer((req, res) => {
         if (!latestSyncState.data) {
           latestSyncState.data = { products: [], orders: [], customers: [], activities: [], followups: [], deletedIds: [] };
         }
-        
-        // 1. Full data update
-        if (payload.data && typeof payload.data === 'object') {
+
+        // 1. Full data update vs Reset / Sample Data
+        if (payload.type === 'RESET_EMPTY_STATE') {
+          latestSyncState.data = { products: [], orders: [], customers: [], activities: [], followups: [], deletedIds: [] };
+          latestSyncState.deletedIds = [];
+        } else if (payload.type === 'LOAD_SAMPLE_DATA' && payload.data) {
           latestSyncState.data = payload.data;
-          if (Array.isArray(payload.data.deletedIds)) {
-            latestSyncState.deletedIds = Array.from(new Set([...(latestSyncState.deletedIds || []), ...payload.data.deletedIds]));
+          latestSyncState.deletedIds = [];
+        } else {
+          // Merge incoming deletedIds
+          const incomingDeleted = [
+            ...(Array.isArray(payload.deletedIds) ? payload.deletedIds : []),
+            ...(payload.data && Array.isArray(payload.data.deletedIds) ? payload.data.deletedIds : [])
+          ];
+          if (incomingDeleted.length > 0) {
+            latestSyncState.deletedIds = Array.from(new Set([...(latestSyncState.deletedIds || []), ...incomingDeleted]));
           }
-        }
-        if (Array.isArray(payload.deletedIds)) {
-          latestSyncState.deletedIds = Array.from(new Set([...(latestSyncState.deletedIds || []), ...payload.deletedIds]));
+          const delSet = new Set(latestSyncState.deletedIds || []);
+
+          // Intelligent merge for payload.data
+          if (payload.data && typeof payload.data === 'object') {
+            // Products
+            if (Array.isArray(payload.data.products)) {
+              const curProds = latestSyncState.data.products || [];
+              payload.data.products.forEach(p => {
+                if (!p || !p.id || delSet.has(p.id)) return;
+                const idx = curProds.findIndex(x => x.id === p.id);
+                if (idx === -1) curProds.unshift(p);
+                else curProds[idx] = { ...curProds[idx], ...p };
+              });
+              latestSyncState.data.products = curProds.filter(p => !delSet.has(p.id));
+            }
+            // Orders
+            if (Array.isArray(payload.data.orders)) {
+              const curOrders = latestSyncState.data.orders || [];
+              payload.data.orders.forEach(o => {
+                if (!o || !o.id || delSet.has(o.id)) return;
+                const idx = curOrders.findIndex(x => x.id === o.id);
+                if (idx === -1) curOrders.unshift(o);
+                else curOrders[idx] = { ...curOrders[idx], ...o };
+              });
+              latestSyncState.data.orders = curOrders.filter(o => !delSet.has(o.id));
+            }
+            // Customers
+            if (Array.isArray(payload.data.customers)) {
+              const curCusts = latestSyncState.data.customers || [];
+              payload.data.customers.forEach(c => {
+                if (!c || (!c.id && !c.email) || (c.id && delSet.has(c.id))) return;
+                const idx = curCusts.findIndex(x => (c.id && x.id === c.id) || (c.email && x.email && x.email.toLowerCase() === c.email.toLowerCase()));
+                if (idx === -1) curCusts.push(c);
+                else curCusts[idx] = { ...curCusts[idx], ...c };
+              });
+              latestSyncState.data.customers = curCusts.filter(c => !delSet.has(c.id));
+            }
+            // Activities
+            if (Array.isArray(payload.data.activities)) {
+              const curActs = latestSyncState.data.activities || [];
+              const actIds = new Set(curActs.map(a => a.id));
+              payload.data.activities.forEach(a => {
+                if (a && a.id && !actIds.has(a.id)) {
+                  curActs.unshift(a);
+                  actIds.add(a.id);
+                }
+              });
+              latestSyncState.data.activities = curActs.slice(0, 150);
+            }
+            // Followups
+            if (Array.isArray(payload.data.followups)) {
+              const curFlws = latestSyncState.data.followups || [];
+              payload.data.followups.forEach(f => {
+                if (!f || !f.id || delSet.has(f.id)) return;
+                const idx = curFlws.findIndex(x => x.id === f.id);
+                if (idx === -1) curFlws.unshift(f);
+                else curFlws[idx] = { ...curFlws[idx], ...f };
+              });
+              latestSyncState.data.followups = curFlws.filter(f => !delSet.has(f.id));
+            }
+          }
         }
 
         // 2. Specific Deletion Events
@@ -171,25 +267,24 @@ const server = http.createServer((req, res) => {
           latestSyncState.deletedIds = latestSyncState.deletedIds || [];
           if (!latestSyncState.deletedIds.includes(payload.followupId)) latestSyncState.deletedIds.push(payload.followupId);
         }
-        if (payload.type === 'RESET_EMPTY_STATE') {
-          latestSyncState.data = { products: [], orders: [], customers: [], activities: [], followups: [], deletedIds: [] };
-          latestSyncState.deletedIds = [];
-        }
-        if (payload.type === 'LOAD_SAMPLE_DATA' && payload.data) {
-          latestSyncState.data = payload.data;
-        }
-
-        // 3. Specific Entity Updates
-        if (payload.order && typeof payload.order === 'object' && payload.order.id) {
-          if (!latestSyncState.data.orders) latestSyncState.data.orders = [];
-          const oIdx = latestSyncState.data.orders.findIndex(o => o.id === payload.order.id);
-          if (oIdx === -1) {
-            latestSyncState.data.orders.unshift(payload.order);
-          } else {
-            latestSyncState.data.orders[oIdx] = { ...latestSyncState.data.orders[oIdx], ...payload.order };
+        if (payload.type === 'CHAT_CLEAR') {
+          if (payload.targetCustId) {
+            const target = String(payload.targetCustId).trim().toLowerCase();
+            latestSyncState.chats = (latestSyncState.chats || []).filter(m => {
+              const mId = (m.customerId ? String(m.customerId) : '').toLowerCase();
+              const mEmail = (m.customerEmail ? String(m.customerEmail) : '').toLowerCase();
+              return mId !== target && mEmail !== target;
+            });
+          } else if (Array.isArray(payload.chats)) {
+            latestSyncState.chats = payload.chats;
           }
         }
+
+        // 3. Entity Creation / Update (Unmark from deletedIds if re-created)
         if (payload.product && typeof payload.product === 'object' && payload.product.id) {
+          if (latestSyncState.deletedIds) {
+            latestSyncState.deletedIds = latestSyncState.deletedIds.filter(id => id !== payload.product.id);
+          }
           if (!latestSyncState.data.products) latestSyncState.data.products = [];
           const idx = latestSyncState.data.products.findIndex(p => p.id === payload.product.id);
           if (idx === -1) {
@@ -201,7 +296,22 @@ const server = http.createServer((req, res) => {
         if (Array.isArray(payload.products)) {
           latestSyncState.data.products = payload.products;
         }
+        if (payload.order && typeof payload.order === 'object' && payload.order.id) {
+          if (latestSyncState.deletedIds) {
+            latestSyncState.deletedIds = latestSyncState.deletedIds.filter(id => id !== payload.order.id);
+          }
+          if (!latestSyncState.data.orders) latestSyncState.data.orders = [];
+          const oIdx = latestSyncState.data.orders.findIndex(o => o.id === payload.order.id);
+          if (oIdx === -1) {
+            latestSyncState.data.orders.unshift(payload.order);
+          } else {
+            latestSyncState.data.orders[oIdx] = { ...latestSyncState.data.orders[oIdx], ...payload.order };
+          }
+        }
         if (payload.customer && typeof payload.customer === 'object' && (payload.customer.id || payload.customer.email)) {
+          if (payload.customer.id && latestSyncState.deletedIds) {
+            latestSyncState.deletedIds = latestSyncState.deletedIds.filter(id => id !== payload.customer.id);
+          }
           if (!latestSyncState.data.customers) latestSyncState.data.customers = [];
           const cIdx = latestSyncState.data.customers.findIndex(c => 
             (payload.customer.id && c.id === payload.customer.id) ||
@@ -220,6 +330,9 @@ const server = http.createServer((req, res) => {
           }
         }
         if (payload.followup && typeof payload.followup === 'object' && payload.followup.id) {
+          if (latestSyncState.deletedIds) {
+            latestSyncState.deletedIds = latestSyncState.deletedIds.filter(id => id !== payload.followup.id);
+          }
           if (!latestSyncState.data.followups) latestSyncState.data.followups = [];
           const fIdx = latestSyncState.data.followups.findIndex(f => f.id === payload.followup.id);
           if (fIdx === -1) {
@@ -233,14 +346,14 @@ const server = http.createServer((req, res) => {
         if (payload.users && typeof payload.users === 'object') {
           latestSyncState.users = { ...(latestSyncState.users || {}), ...payload.users };
         }
-        if (payload.chats) {
+        if (payload.chats && Array.isArray(payload.chats)) {
           latestSyncState.chats = payload.chats;
         }
-        if (payload.storeSettings) {
+        if (payload.storeSettings && typeof payload.storeSettings === 'object') {
           latestSyncState.storeSettings = payload.storeSettings;
         }
 
-        // 5. Purge any deleted items from latestSyncState
+        // 5. Final Tombstone Purge
         if (latestSyncState.deletedIds && latestSyncState.deletedIds.length > 0) {
           const dSet = new Set(latestSyncState.deletedIds);
           if (latestSyncState.data.products) latestSyncState.data.products = latestSyncState.data.products.filter(p => !dSet.has(p.id));
@@ -276,7 +389,7 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/sync/data' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type': 'application/json',
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
     });
     res.end(JSON.stringify(latestSyncState));
     return;
@@ -320,9 +433,19 @@ const server = http.createServer((req, res) => {
 });
 
 const localIp = getLocalIp();
+const allIps = getNetworkIps();
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running at:`);
+  console.log(`================================================================`);
+  console.log(`  BY.NVDILA - SERVER SINKRONISASI REAL-TIME HP & LAPTOP`);
+  console.log(`================================================================`);
   console.log(`- Laptop: http://localhost:${PORT}/`);
   console.log(`- HP:     http://${localIp}:${PORT}/`);
-  console.log(`- Real-Time Localhost Sync: ACTIVE on port ${PORT}`);
+  if (allIps.length > 1) {
+    console.log(`- Alamat IP alternatif yang terdeteksi:`);
+    allIps.forEach(i => {
+      if (i.address !== localIp) console.log(`    http://${i.address}:${PORT}/ (${i.name})`);
+    });
+  }
+  console.log(`- Sinkronisasi Real-Time (SSE/HTTP): AKTIF`);
+  console.log(`================================================================`);
 });
