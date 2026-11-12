@@ -90,8 +90,11 @@ export default function CustomerDetailView({
   };
 
   const whatsappPhone = customer.phone ? customer.phone.replace(/[^0-9]/g, '') : '';
-  const cleanPhone = whatsappPhone.startsWith('0') ? '62' + whatsappPhone.slice(1) : whatsappPhone;
-  const whatsappUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=Halo%20kak%20${encodeURIComponent(customer.name)}%2C%20salam%20dari%20by.Nvdila%20Hijab%20✨` : null;
+  const cleanPhone = whatsappPhone.startsWith('0') ? '62' + whatsappPhone.slice(1) : (whatsappPhone.startsWith('8') ? '62' + whatsappPhone : whatsappPhone);
+  const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+  const whatsappUrl = cleanPhone 
+    ? (isMobile ? `whatsapp://send?phone=${cleanPhone}&text=Halo%20kak%20${encodeURIComponent(customer.name)}%2C%20salam%20dari%20by.Nvdila%20Hijab%20✨` : `https://web.whatsapp.com/send?phone=${cleanPhone}&text=Halo%20kak%20${encodeURIComponent(customer.name)}%2C%20salam%20dari%20by.Nvdila%20Hijab%20✨`)
+    : null;
 
   return (
     <div className="space-y-6">

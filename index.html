@@ -634,6 +634,131 @@
       } catch(e) { return str; }
     }
 
+    // --- WhatsApp & Direct Room Chat Helpers ---
+    function formatCleanPhone(raw) {
+      if (!raw) return '';
+      let num = String(raw).trim().replace(/[^0-9]/g, '');
+      if (!num) return '';
+      if (num.startsWith('0')) {
+        num = '62' + num.slice(1);
+      } else if (num.startsWith('8')) {
+        num = '62' + num;
+      }
+      return num;
+    }
+
+    function isMobileDevice() {
+      if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    function getWhatsAppDirectUrl(phone, text) {
+      const clean = formatCleanPhone(phone);
+      if (!clean || clean.length < 8) return '';
+      const enc = encodeURIComponent(text || '');
+      const mobile = isMobileDevice();
+      return mobile 
+        ? ('whatsapp://send?phone=' + clean + '&text=' + enc)
+        : ('https://web.whatsapp.com/send?phone=' + clean + '&text=' + enc);
+    }
+
+    function openDirectWhatsApp(phone, text) {
+      const clean = formatCleanPhone(phone);
+      if (!clean || clean.length < 8) {
+        alert('Nomor WhatsApp pelanggan tidak valid atau belum diisi (minimal 8 digit).');
+        return;
+      }
+      const enc = encodeURIComponent(text || '');
+      const mobile = isMobileDevice();
+
+      if (mobile) {
+        // Direct mobile app intent (immediately opens customer chat room in WhatsApp)
+        const appUrl = 'whatsapp://send?phone=' + clean + '&text=' + enc;
+        const webFallback = 'https://api.whatsapp.com/send?phone=' + clean + '&text=' + enc;
+        let didOpen = false;
+        const onBlur = () => { didOpen = true; };
+        try { window.addEventListener('blur', onBlur, { once: true }); } catch(e) {}
+        try {
+          window.location.href = appUrl;
+        } catch(e) {
+          window.open(webFallback, '_blank');
+          return;
+        }
+        setTimeout(() => {
+          try { window.removeEventListener('blur', onBlur); } catch(e) {}
+          if (!didOpen && typeof document !== 'undefined' && document.hasFocus && document.hasFocus()) {
+            window.open(webFallback, '_blank');
+          }
+        }, 1500);
+      } else {
+        // Laptop / Desktop: web.whatsapp.com opens the chat room directly with prefilled text
+        const webUrl = 'https://web.whatsapp.com/send?phone=' + clean + '&text=' + enc;
+        window.open(webUrl, '_blank');
+      }
+    }
+
+    function getAutoMessage(type, data = {}) {
+      const store = (typeof getStoreSettings === 'function' ? getStoreSettings() : {}) || {};
+      const brandName = store.brandName || 'BY.NVDILA Hijab';
+      const custName = data.customerName || data.name || 'Sahabat Hijab';
+      const orderId = data.orderId || data.id || '';
+      const total = data.total ? (typeof formatRupiah === 'function' ? formatRupiah(data.total) : 'Rp ' + data.total) : '';
+      const status = data.orderStatus || data.status || 'Processing';
+      const resi = data.resi || '';
+      const items = data.itemsText || (Array.isArray(data.items) ? data.items.map(i => (i.productName || i.name) + ' (' + (i.quantity || 1) + 'x)').join(', ') : '');
+      const segment = data.segment || 'Pelanggan';
+
+      switch(type) {
+        case 'order_confirmation':
+        case 'order':
+          return 'Halo Kak ' + custName + '! 🌸✨\n\nTerima kasih telah memesan koleksi hijab butik di *' + brandName + '*.' +
+            '\n\nBerikut rincian pesanan Kakak:' +
+            '\n📋 *No. Pesanan:* ' + orderId +
+            '\n🧕 *Item Hijab:* ' + (items || 'Koleksi Hijab') +
+            '\n💰 *Total Pembayaran:* ' + total +
+            '\n💳 *Metode Bayar:* ' + (data.paymentMethod || 'Transfer Bank') + ' (' + (data.paymentStatus || 'Lunas') + ')' +
+            '\n📦 *Status Pesanan:* ' + status +
+            (resi ? ('\n📍 *No. Resi:* ' + resi) : '') +
+            '\n\nPesanan Kakak sedang kami siapkan dengan teliti & rapi. Apabila ada pertanyaan, silakan balas pesan ini ya Kak. Terima kasih banyak! 💕';
+
+        case 'order_shipping':
+        case 'shipping':
+          return 'Halo Kak ' + custName + '! 🚚📦\n\nKabar gembira! Pesanan hijab Kakak (*' + orderId + '*) telah dikirimkan oleh butik *' + brandName + '*.' +
+            '\n\n📍 *No. Resi Pengiriman:* ' + (resi || 'Dalam proses pickup kurir') +
+            '\n🧕 *Item:* ' + (items || 'Koleksi Hijab') +
+            '\n💰 *Total:* ' + total +
+            '\n\nPaket sedang dalam perjalanan menuju alamat tujuan Kakak. Semoga pashmina viscose modalnya sampai dengan aman dan anggun dipakai yaa 🌸✨';
+
+        case 'order_completed':
+        case 'completed':
+          return 'Halo Kak ' + custName + '! 🌸✨\n\nPesanan hijab Kakak (*' + orderId + '*) sudah berstatus *Selesai*.' +
+            '\n\nBagaimana pengalaman Kakak memakai koleksi hijab *' + brandName + '*? Kami sangat senang bila Kakak menyukai kelembutan bahan dan kerapiannya.' +
+            '\n\nJangan lupa tag butik kami saat berhijab ya Kak! Terima kasih banyak sudah berbelanja di butik kami 💕';
+
+        case 'followup_promo':
+        case 'followup':
+          return 'Halo Kak ' + custName + '! Salam hangat dari *' + brandName + '* 🧕✨\n\nSebagai pelanggan istimewa (' + segment + '), kami ingin berbagi informasi bahwa butik kami baru saja merilis warna dan koleksi hijab pashmina viscose modal terbaru yang super adem, flowy, dan tegak rapi di dahi.' +
+            '\n\nSpesial untuk Kakak, ada penawaran eksklusif dan stok terbatas minggu ini. Apakah Kakak ingin melihat pilihan warna barunya? 🌸';
+
+        case 'followup_reminder':
+          return 'Halo Kak ' + custName + '! Salam dari butik *' + brandName + '* 🌸\n\n' +
+            (data.notes ? ('Catatan follow-up: "' + data.notes + '"\n\n') : '') +
+            'Apakah ada koleksi hijab atau pesanan yang ingin Kakak tanyakan? Kami dengan senang hati siap melayani Kakak yaa ✨';
+
+        case 'greeting':
+          return 'Halo Kak ' + custName + '! Salam hangat dari *' + brandName + '* 🌸✨\nTerima kasih sudah menjadi bagian dari sahabat hijab kami. Ada yang bisa kami bantu seputar pesanan atau rekomendasi hijab hari ini? 💕';
+
+        case 'consultation':
+          return 'Halo Admin *' + brandName + '*! 🧕\n\nSaya *' + custName + '*, ingin konsultasi mengenai koleksi hijab (katalog warna, bahan viscose modal, dan ketersediaan stok). Boleh minta info rekomendasinya Min? Terima kasih 🌸';
+
+        case 'product_inquiry':
+          return 'Halo Admin *' + brandName + '*! 🌸\n\nSaya tertarik dengan koleksi hijab:\n*' + (data.productName || 'Hijab') + '* (' + (data.category || 'Pashmina') + ')\nHarga: *' + (total || '-') + '*\n\nApakah pilihan warna hijab ini ready stok untuk dikirim hari ini? Terima kasih!';
+
+        default:
+          return 'Halo Kak ' + custName + '! Salam dari butik *' + brandName + '*. Ada yang bisa kami bantu seputar koleksi hijab kami? 🌸✨';
+      }
+    }
+
     // Reusable Elegant Product Photo / Placeholder Renderer
     function renderProductPhoto(image, name = 'Hijab by.nvdila', height = 150) {
       const safeName = escapeHtml(name);
@@ -1025,6 +1150,7 @@
       reportsTab: 'sales',
       activeModal: null,
       modalPayload: null,
+      waModalData: null,
       customerSearch: '',
       customerFilterSegment: 'ALL',
       productSearch: '',
@@ -1284,6 +1410,223 @@
     // GLOBAL APP INTERFACE (Bound cleanly to all onclick & onsubmit events)
     // =========================================================================
     const App = {
+      // WhatsApp & Automated Messages
+      openWhatsApp(phone, text) {
+        openDirectWhatsApp(phone, text);
+      },
+      openDirectWhatsApp(phone, text) {
+        openDirectWhatsApp(phone, text);
+      },
+      getAutoMessage(type, data) {
+        return getAutoMessage(type, data);
+      },
+      sendOrderWhatsApp(orderId) {
+        const order = (state.data.orders || []).find(o => o.id === orderId);
+        if (!order) {
+          alert('Pesanan tidak ditemukan.');
+          return;
+        }
+        let phone = order.phone || order.customerPhone || '';
+        if (!phone) {
+          const cust = (state.data.customers || []).find(c => c.id === order.customerId || (order.customerName && c.name === order.customerName));
+          if (cust && cust.phone) phone = cust.phone;
+        }
+        if (!phone) {
+          alert('Nomor WhatsApp pelanggan belum tercatat pada pesanan ini.');
+          return;
+        }
+        const itemsText = (order.items || []).map(i => (i.productName || i.name) + ' (' + (i.quantity || 1) + 'x)').join(', ');
+        const tplType = order.orderStatus === 'Shipped' ? 'order_shipping' : order.orderStatus === 'Completed' ? 'order_completed' : 'order_confirmation';
+        const msg = getAutoMessage(tplType, {
+          customerName: order.customerName || 'Kak',
+          orderId: order.id,
+          itemsText,
+          total: order.total,
+          paymentMethod: order.paymentMethod,
+          paymentStatus: order.paymentStatus,
+          orderStatus: order.orderStatus,
+          resi: order.resi
+        });
+        openDirectWhatsApp(phone, msg);
+      },
+      openWhatsAppTemplateModal(opts = {}) {
+        let customer = null;
+        let order = null;
+        let phone = opts.phone || '';
+        let name = opts.name || '';
+
+        if (opts.orderId) {
+          order = (state.data.orders || []).find(o => o.id === opts.orderId);
+          if (order) {
+            name = name || order.customerName;
+            phone = phone || order.phone || order.customerPhone;
+            if (!phone && order.customerId) {
+              customer = (state.data.customers || []).find(c => c.id === order.customerId);
+              if (customer && customer.phone) phone = customer.phone;
+            }
+          }
+        }
+
+        if (opts.customerId) {
+          customer = (state.data.customers || []).find(c => c.id === opts.customerId);
+          if (customer) {
+            name = name || customer.name;
+            phone = phone || customer.phone;
+            if (!order) {
+              const custOrders = (state.data.orders || []).filter(o => o.customerId === customer.id || o.customerName === customer.name);
+              if (custOrders.length > 0) {
+                order = [...custOrders].sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+              }
+            }
+          }
+        }
+
+        if (!phone && !name) {
+          alert('Data pelanggan tidak ditemukan untuk mengirim pesan.');
+          return;
+        }
+
+        const defTpl = order ? (order.orderStatus === 'Shipped' ? 'order_shipping' : order.orderStatus === 'Completed' ? 'order_completed' : 'order_confirmation') : 'followup_promo';
+        const itemsText = order ? (order.items || []).map(i => (i.productName || i.name) + ' (' + (i.quantity || 1) + 'x)').join(', ') : '';
+
+        const initialMsg = getAutoMessage(defTpl, {
+          customerName: name,
+          orderId: order ? order.id : '',
+          itemsText,
+          total: order ? order.total : 0,
+          paymentMethod: order ? order.paymentMethod : '',
+          paymentStatus: order ? order.paymentStatus : '',
+          orderStatus: order ? order.orderStatus : '',
+          resi: order ? order.resi : '',
+          segment: customer ? customer.segment : 'New Customer'
+        });
+
+        state.waModalData = {
+          customerId: customer ? customer.id : (opts.customerId || ''),
+          orderId: order ? order.id : (opts.orderId || ''),
+          phone: phone || '',
+          name: name || 'Pelanggan',
+          segment: customer ? (customer.segment || 'New Customer') : 'New Customer',
+          selectedTemplate: defTpl,
+          messageText: initialMsg
+        };
+        state.activeModal = 'wa_template';
+        render();
+      },
+      closeWhatsAppModal() {
+        state.activeModal = null;
+        state.waModalData = null;
+        render();
+      },
+      selectWaModalTemplate(tplType) {
+        if (!state.waModalData) return;
+        state.waModalData.selectedTemplate = tplType;
+        const order = state.waModalData.orderId ? (state.data.orders || []).find(o => o.id === state.waModalData.orderId) : null;
+        const customer = state.waModalData.customerId ? (state.data.customers || []).find(c => c.id === state.waModalData.customerId) : null;
+        const itemsText = order ? (order.items || []).map(i => (i.productName || i.name) + ' (' + (i.quantity || 1) + 'x)').join(', ') : '';
+
+        const newMsg = getAutoMessage(tplType, {
+          customerName: state.waModalData.name,
+          orderId: order ? order.id : '',
+          itemsText,
+          total: order ? order.total : 0,
+          paymentMethod: order ? order.paymentMethod : '',
+          paymentStatus: order ? order.paymentStatus : '',
+          orderStatus: order ? order.orderStatus : '',
+          resi: order ? order.resi : '',
+          segment: state.waModalData.segment || (customer ? customer.segment : 'New Customer'),
+          notes: ''
+        });
+
+        state.waModalData.messageText = newMsg;
+        const textarea = document.getElementById('wa-modal-text');
+        if (textarea) textarea.value = newMsg;
+
+        const pills = document.querySelectorAll('.wa-tpl-pill');
+        pills.forEach(p => {
+          if (p.getAttribute('data-tpl') === tplType) {
+            p.style.background = '#059669';
+            p.style.color = '#FFFFFF';
+            p.style.borderColor = '#059669';
+          } else {
+            p.style.background = '#F9FAFB';
+            p.style.color = '#374151';
+            p.style.borderColor = '#E5E7EB';
+          }
+        });
+      },
+      sendWaModalMessage() {
+        if (!state.waModalData) return;
+        const textarea = document.getElementById('wa-modal-text');
+        const text = textarea ? textarea.value : (state.waModalData.messageText || '');
+        const phone = state.waModalData.phone;
+        if (!phone) {
+          alert('Nomor WhatsApp pelanggan belum diisi.');
+          return;
+        }
+        openDirectWhatsApp(phone, text);
+        App.closeWhatsAppModal();
+      },
+      copyWaModalMessage() {
+        const textarea = document.getElementById('wa-modal-text');
+        const text = textarea ? textarea.value : (state.waModalData ? state.waModalData.messageText : '');
+        if (!text) return;
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('btn-copy-wa-msg');
+            if (btn) {
+              const orig = btn.innerHTML;
+              btn.innerHTML = '✓ Tersalin!';
+              btn.style.color = '#059669';
+              setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 2000);
+            }
+          }).catch(() => {});
+        } else {
+          if (textarea) {
+            textarea.select();
+            document.execCommand('copy');
+            alert('Pesan berhasil disalin!');
+          }
+        }
+      },
+      contactAdminWhatsApp(customText) {
+        const store = (typeof getStoreSettings === 'function' ? getStoreSettings() : {}) || {};
+        const storePhone = store.phone || '081234567890';
+        openDirectWhatsApp(storePhone, customText || 'Halo Admin BY.NVDILA! Saya ingin konsultasi seputar koleksi hijab.');
+      },
+      askProductWhatsApp(productId) {
+        const p = (state.data.products || []).find(x => x.id === productId);
+        if (!p) return;
+        const store = (typeof getStoreSettings === 'function' ? getStoreSettings() : {}) || {};
+        const storePhone = store.phone || '081234567890';
+        const msg = getAutoMessage('product_inquiry', {
+          productName: p.name,
+          category: p.category,
+          price: p.price
+        });
+        openDirectWhatsApp(storePhone, msg);
+      },
+      openWhatsAppForActiveChat(customerId, customerName) {
+        let phone = '';
+        if (customerId) {
+          const cust = (state.data.customers || []).find(c => c.id === customerId);
+          if (cust && cust.phone) phone = cust.phone;
+        }
+        if (!phone && state.chats) {
+          const chatMsg = state.chats.find(c => (c.customerId === customerId || c.customerName === customerName) && c.phone);
+          if (chatMsg) phone = chatMsg.phone;
+        }
+        if (!phone) {
+          const input = prompt('Masukkan nomor WhatsApp pelanggan (contoh: 081234567890):');
+          if (input) phone = input;
+          else return;
+        }
+        App.openWhatsAppTemplateModal({
+          customerId,
+          name: customerName,
+          phone
+        });
+      },
       toggleSidebar() {
         state.sidebarOpen = !state.sidebarOpen;
         render();
@@ -4146,6 +4489,11 @@
                         <td>
                           <div style="display: flex; gap: 6px;">
                             <button type="button" class="btn btn-outline" style="padding: 4px 8px; font-size: 11px;" onclick="App.viewCustomer('${c.id}')">Detail</button>
+                            ${c.phone ? `
+                              <button type="button" class="btn btn-success" style="padding: 4px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 3px;" onclick="App.openWhatsAppTemplateModal({ customerId: '${c.id}' })" title="Chat WhatsApp / Pesan Otomatis">
+                                💬 WA
+                              </button>
+                            ` : ''}
                             <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="App.openEditCustomer('${c.id}')">Edit</button>
                             <button type="button" class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="App.deleteCustomer('${c.id}')">Hapus</button>
                           </div>
@@ -4183,7 +4531,14 @@
               <span style="font-size: 16px; line-height: 1;">←</span> Kembali ke Daftar Pelanggan
             </button>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              ${cust.phone ? `<a href="https://wa.me/${cust.phone.replace(/[^0-9]/g, '')}?text=Halo%20kak%20${encodeURIComponent(cust.name)}%2C%20terima%20kasih%20sudah%20berbelanja%20di%20by.nvdila!" target="_blank" class="btn btn-success">Chat WhatsApp</a>` : ''}
+              ${cust.phone ? `
+                <button type="button" class="btn btn-success" style="display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(16,185,129,0.25);" onclick="App.openDirectWhatsApp('${escapeHtml(cust.phone)}', App.getAutoMessage('greeting', { customerName: '${escapeHtml(cust.name)}', segment: '${escapeHtml(cust.segment)}' }))" title="Langsung buka chat WhatsApp room dengan pelanggan">
+                  <span>💬</span> Chat WhatsApp
+                </button>
+                <button type="button" class="btn btn-outline" style="border-color: #10B981; color: #047857; display: inline-flex; align-items: center; gap: 4px;" onclick="App.openWhatsAppTemplateModal({ customerId: '${cust.id}' })" title="Pilih pesan otomatis siap kirim">
+                  <span>📋</span> Pesan Otomatis
+                </button>
+              ` : ''}
               <button type="button" class="btn btn-primary" onclick="App.openAddOrderForCustomer('${cust.id}')">+ Buat Pesanan Baru</button>
             </div>
           </div>
@@ -4466,7 +4821,15 @@
                         </select>
                       </td>
                       <td>
-                        <button type="button" class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="App.deleteOrder('${o.id}')">Hapus</button>
+                        <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                          <button type="button" class="btn btn-success" style="padding: 4px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 3px;" onclick="App.sendOrderWhatsApp('${o.id}')" title="Kirim Konfirmasi Pesanan Otomatis ke WhatsApp Pelanggan">
+                            <span>💬</span> WA
+                          </button>
+                          <button type="button" class="btn btn-outline" style="padding: 4px 6px; font-size: 11px; border-color: #10B981; color: #047857;" onclick="App.openWhatsAppTemplateModal({ orderId: '${o.id}' })" title="Pilihan Template Pesan Otomatis Lengkap">
+                            📋
+                          </button>
+                          <button type="button" class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="App.deleteOrder('${o.id}')">Hapus</button>
+                        </div>
                       </td>
                     </tr>
                   `).join('')}
@@ -4697,9 +5060,9 @@
                           <td>
                             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                               ${c.phone ? `
-                                <a href="https://wa.me/${waNumber}?text=${waMsg}" target="_blank" class="btn btn-success" style="padding: 5px 10px; font-size: 11px;" title="Follow-up via WhatsApp">
+                                <button type="button" class="btn btn-success" style="padding: 5px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;" onclick="App.openWhatsAppTemplateModal({ customerId: '${c.id}' })" title="Langsung buka room chat WA dengan template pesan otomatis">
                                   💬 Chat WA
-                                </a>
+                                </button>
                               ` : ''}
                               <button type="button" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px;" onclick="App.startChatWithCustomer('${c.id}')" title="Chat langsung di dalam aplikasi">
                                 💭 Chat Aplikasi
@@ -4736,7 +5099,12 @@
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);">
                       <span style="font-size: 10px; color: #777;">${formatDate(f.date)}</span>
-                      <div style="display: flex; gap: 4px;">
+                      <div style="display: flex; gap: 4px; align-items: center;">
+                        ${f.customerPhone ? `
+                          <button type="button" class="btn btn-success" style="padding: 3px 6px; font-size: 10px; display: inline-flex; align-items: center; gap: 2px;" onclick="App.openDirectWhatsApp('${escapeHtml(f.customerPhone)}', App.getAutoMessage('followup_reminder', { customerName: '${escapeHtml(f.customerName)}', notes: '${escapeHtml(f.notes).replace(/'/g, "\\'")}' }))" title="Kirim Follow-up Langsung ke WhatsApp">
+                            💬 WA
+                          </button>
+                        ` : ''}
                         <button type="button" class="btn btn-outline" style="padding: 3px 6px; font-size: 10px;" onclick="App.toggleFollowup('${f.id}')">
                           ${f.status === 'Selesai' ? 'Buka Kembali' : 'Selesai'}
                         </button>
@@ -4949,7 +5317,13 @@
                   <div style="font-weight: bold; font-size: 14px; color: var(--charcoal);">${escapeHtml(activeConv.customerName || 'Pelanggan')}</div>
                   <div style="font-size: 11px; color: #777;">${escapeHtml(activeConv.customerEmail || '')}</div>
                 </div>
-                <div style="display: flex; gap: 8px; align-items: center;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-success" style="font-size: 11px; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;" onclick="App.openWhatsAppForActiveChat('${escapeHtml(activeConv.customerId || '')}', '${escapeHtml(activeConv.customerName || '')}')" title="Buka room chat pelanggan langsung di WhatsApp">
+                    <span>💬</span> Buka WhatsApp
+                  </button>
+                  <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 5px 10px; border-color: #10B981; color: #047857;" onclick="App.openWhatsAppTemplateModal({ customerId: '${escapeHtml(activeConv.customerId || '')}' })" title="Pilihan Template Pesan Otomatis WhatsApp">
+                    📋 Pesan Otomatis
+                  </button>
                   ${activeConv.customerId ? `
                     <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 5px 10px;" onclick="App.viewCustomer('${activeConv.customerId}')">👤 Lihat Detail Pelanggan</button>
                   ` : ''}
@@ -5230,8 +5604,11 @@
                     <button type="button" class="btn" onclick="App.setPortalTab('catalog')" style="background: #FFFFFF; color: #241D1B; padding: 11px 24px; font-size: 13px; border-radius: 12px; font-weight: bold; box-shadow: 0 4px 14px rgba(0,0,0,0.15);">
                       🛍️ Belanja Hijab Sekarang →
                     </button>
+                    <button type="button" class="btn" onclick="App.contactAdminWhatsApp('Halo Admin BY.NVDILA! Saya ' + ('${escapeHtml(auth.name || 'Pelanggan')}') + ' ingin konsultasi mengenai pilihan varian hijab pashmina viscose modal.')" style="background: #25D366; color: #FFFFFF; border: none; padding: 11px 20px; font-size: 13px; border-radius: 12px; font-weight: bold; box-shadow: 0 4px 14px rgba(37,211,102,0.25);">
+                      💬 Konsultasi WhatsApp Admin
+                    </button>
                     <button type="button" class="btn" onclick="App.setPortalTab('chat')" style="background: rgba(255,255,255,0.15); color: #FFFFFF; border: 1px solid rgba(255,255,255,0.35); padding: 11px 20px; font-size: 13px; border-radius: 12px;">
-                      💬 Chat Admin / Konsultasi Warna
+                      💭 Chat Aplikasi
                     </button>
                     <button type="button" class="btn" onclick="App.setPortalTab('my-orders')" style="background: transparent; color: #FDE68A; border: 1px solid rgba(253,230,138,0.4); padding: 11px 18px; font-size: 13px; border-radius: 12px;">
                       📦 Lacak Pesanan (${activeOrders.length})
@@ -5349,9 +5726,14 @@
                               <span style="font-size: 10.5px; color: #888;">Harga Butik</span>
                               <div style="font-size: 16px; font-weight: bold; color: var(--mocha); font-family: Georgia, serif;">${formatRupiah(p.price)}</div>
                             </div>
-                            <button type="button" class="btn btn-primary" style="width: 100%; font-size: 12px; padding: 8px 12px; border-radius: 10px;" onclick="App.openPurchase('${p.id}')">
-                              🛍️ Beli Sekarang
-                            </button>
+                            <div style="display: flex; gap: 6px;">
+                              <button type="button" class="btn btn-primary" style="flex: 1; font-size: 12px; padding: 8px 10px; border-radius: 10px;" onclick="App.openPurchase('${p.id}')">
+                                🛍️ Beli Sekarang
+                              </button>
+                              <button type="button" class="btn btn-outline" style="padding: 8px 10px; font-size: 12px; border-radius: 10px; border-color: #25D366; color: #047857; background: #F0FDF4;" onclick="App.askProductWhatsApp('${p.id}')" title="Tanya Produk ini via WhatsApp Admin">
+                                💬 WA
+                              </button>
+                            </div>
                           </div>
                         </div>
                       `).join('')}
@@ -5456,6 +5838,9 @@
                         <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
                           <div style="font-size: 16px; font-weight: bold; color: var(--mocha);">${formatRupiah(o.total)}</div>
                           <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+                            <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 4px 10px; color: #047857; border-color: #A7F3D0; background: #ECFDF5; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px;" onclick="App.contactAdminWhatsApp('Halo Admin BY.NVDILA! Mau tanya update status pesanan saya ID ' + ('${escapeHtml(o.id)}') + ' (Status: ' + ('${escapeHtml(o.orderStatus)}') + '). Terima kasih!')">
+                              💬 Chat WA Admin
+                            </button>
                             <span class="badge badge-info">${escapeHtml(o.paymentStatus || 'Lunas')}</span>
                             ${(o.orderStatus === 'Pending' || o.orderStatus === 'Processing') ? `
                               <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 4px 10px; color: #DC2626; border-color: #FECACA; background: #FEF2F2; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="App.cancelCustomerOrder('${escapeHtml(o.id)}')">
@@ -5648,6 +6033,93 @@
 
     function renderActiveModal() {
       if (!state.activeModal) return '';
+
+      if (state.activeModal === 'wa_template') {
+        const d = state.waModalData || {};
+        const cleanPhone = formatCleanPhone(d.phone);
+        const displayPhone = cleanPhone ? ('+' + cleanPhone) : '(Belum ada nomor)';
+        const curTpl = d.selectedTemplate || 'order_confirmation';
+
+        return `
+          <div class="modal-backdrop" onclick="App.closeWhatsAppModal()">
+            <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 640px; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);">
+              <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: #ECFDF5; color: #059669; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold;">
+                    📱
+                  </div>
+                  <div>
+                    <h3 class="modal-title" style="font-size: 16px; margin: 0; color: var(--charcoal);">Kirim Pesan Otomatis WhatsApp</h3>
+                    <div style="font-size: 11px; color: #777;">Terkoneksi langsung ke room chat WhatsApp pelanggan tanpa halaman perantara</div>
+                  </div>
+                </div>
+                <button type="button" class="modal-close" onclick="App.closeWhatsAppModal()" style="font-size: 20px;">&times;</button>
+              </div>
+
+              <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; padding-top: 14px;">
+                <!-- Recipient Info Banner -->
+                <div style="background: #F9FAFB; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                  <div>
+                    <div style="font-size: 11px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Penerima Pesan</div>
+                    <div style="font-size: 14px; font-weight: bold; color: var(--charcoal);">${escapeHtml(d.name || 'Pelanggan')}</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div style="font-size: 11px; color: #6B7280;">No. WhatsApp:</div>
+                    <div style="font-family: monospace; font-size: 13px; font-weight: bold; color: #047857;">${escapeHtml(displayPhone)}</div>
+                  </div>
+                </div>
+
+                <!-- Template Selector Pills -->
+                <div>
+                  <label class="form-label" style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">Pilih Template Pesan Otomatis:</label>
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="wa-tpl-pill" data-tpl="order_confirmation" onclick="App.selectWaModalTemplate('order_confirmation')" style="padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid ${curTpl === 'order_confirmation' ? '#059669' : '#E5E7EB'}; background: ${curTpl === 'order_confirmation' ? '#059669' : '#F9FAFB'}; color: ${curTpl === 'order_confirmation' ? '#FFF' : '#374151'};">
+                      📦 Konfirmasi Pesanan
+                    </button>
+                    <button type="button" class="wa-tpl-pill" data-tpl="order_shipping" onclick="App.selectWaModalTemplate('order_shipping')" style="padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid ${curTpl === 'order_shipping' ? '#059669' : '#E5E7EB'}; background: ${curTpl === 'order_shipping' ? '#059669' : '#F9FAFB'}; color: ${curTpl === 'order_shipping' ? '#FFF' : '#374151'};">
+                      🚚 Update Resi & Kirim
+                    </button>
+                    <button type="button" class="wa-tpl-pill" data-tpl="order_completed" onclick="App.selectWaModalTemplate('order_completed')" style="padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid ${curTpl === 'order_completed' ? '#059669' : '#E5E7EB'}; background: ${curTpl === 'order_completed' ? '#059669' : '#F9FAFB'}; color: ${curTpl === 'order_completed' ? '#FFF' : '#374151'};">
+                      ✅ Pesanan Selesai
+                    </button>
+                    <button type="button" class="wa-tpl-pill" data-tpl="followup_promo" onclick="App.selectWaModalTemplate('followup_promo')" style="padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid ${curTpl === 'followup_promo' ? '#059669' : '#E5E7EB'}; background: ${curTpl === 'followup_promo' ? '#059669' : '#F9FAFB'}; color: ${curTpl === 'followup_promo' ? '#FFF' : '#374151'};">
+                      🌸 Promo Hijab Baru
+                    </button>
+                    <button type="button" class="wa-tpl-pill" data-tpl="greeting" onclick="App.selectWaModalTemplate('greeting')" style="padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid ${curTpl === 'greeting' ? '#059669' : '#E5E7EB'}; background: ${curTpl === 'greeting' ? '#059669' : '#F9FAFB'}; color: ${curTpl === 'greeting' ? '#FFF' : '#374151'};">
+                      💬 Sapaan Ramah
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Textarea Editor & Preview -->
+                <div class="form-group" style="margin-bottom: 0;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <label class="form-label" style="margin: 0; font-size: 12px;">Isi Pesan Otomatis (Bisa diedit bila perlu):</label>
+                    <button type="button" id="btn-copy-wa-msg" onclick="App.copyWaModalMessage()" class="btn btn-outline" style="padding: 2px 8px; font-size: 10px; border-color: var(--border);">
+                      📋 Salin Teks
+                    </button>
+                  </div>
+                  <textarea id="wa-modal-text" class="form-control" rows="8" style="font-family: inherit; font-size: 12.5px; line-height: 1.5; resize: vertical; padding: 12px;">${escapeHtml(d.messageText || '')}</textarea>
+                  <div style="font-size: 10.5px; color: #6B7280; margin-top: 4px;">
+                    💡 Tips: Format <code>*tebal*</code> akan tampil tebal di chat WhatsApp pelanggan.
+                  </div>
+                </div>
+              </div>
+
+              <div class="modal-footer" style="border-top: 1px solid var(--border); padding-top: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <button type="button" class="btn btn-outline" onclick="App.closeWhatsAppModal()" style="font-size: 12px;">
+                  Batal
+                </button>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-success" onclick="App.sendWaModalMessage()" style="font-size: 12px; padding: 8px 18px; border-radius: 10px; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">
+                    <span>🚀</span> Buka Langsung di WhatsApp Room
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
 
 
 

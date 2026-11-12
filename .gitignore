@@ -28,3 +28,5 @@ Thumbs.db
 # Large ZIP archives (Arsip rilis)
 *.zip
 node.cmd
+
+synced_db.json

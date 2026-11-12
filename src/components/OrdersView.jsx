@@ -214,9 +214,12 @@ export default function OrdersView({
               <tbody className="divide-y divide-stone-100">
                 {filteredOrders.map((o) => {
                   const phoneNum = o.customerPhone ? o.customerPhone.replace(/[^0-9]/g, '') : '';
-                  const cleanPhone = phoneNum.startsWith('0') ? '62' + phoneNum.slice(1) : phoneNum;
+                  const cleanPhone = phoneNum.startsWith('0') ? '62' + phoneNum.slice(1) : (phoneNum.startsWith('8') ? '62' + phoneNum : phoneNum);
+                  const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
                   const waUrl = cleanPhone
-                    ? `https://wa.me/${cleanPhone}?text=Halo%20kak%20${encodeURIComponent(o.customerName)}%2C%20berikut%20informasi%20pesanan%20${o.id}%20by.Nvdila%20total%20${formatRupiah(o.total)}%20status%20${o.orderStatus}.%20Terima%20kasih!`
+                    ? (isMobile 
+                        ? `whatsapp://send?phone=${cleanPhone}&text=Halo%20kak%20${encodeURIComponent(o.customerName)}%2C%20berikut%20informasi%20pesanan%20${o.id}%20by.Nvdila%20total%20${formatRupiah(o.total)}%20status%20${o.orderStatus}.%20Terima%20kasih!`
+                        : `https://web.whatsapp.com/send?phone=${cleanPhone}&text=Halo%20kak%20${encodeURIComponent(o.customerName)}%2C%20berikut%20informasi%20pesanan%20${o.id}%20by.Nvdila%20total%20${formatRupiah(o.total)}%20status%20${o.orderStatus}.%20Terima%20kasih!`)
                     : null;
 
                   return (
