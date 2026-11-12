@@ -5604,11 +5604,8 @@
                     <button type="button" class="btn" onclick="App.setPortalTab('catalog')" style="background: #FFFFFF; color: #241D1B; padding: 11px 24px; font-size: 13px; border-radius: 12px; font-weight: bold; box-shadow: 0 4px 14px rgba(0,0,0,0.15);">
                       🛍️ Belanja Hijab Sekarang →
                     </button>
-                    <button type="button" class="btn" onclick="App.contactAdminWhatsApp('Halo Admin BY.NVDILA! Saya ' + ('${escapeHtml(auth.name || 'Pelanggan')}') + ' ingin konsultasi mengenai pilihan varian hijab pashmina viscose modal.')" style="background: #25D366; color: #FFFFFF; border: none; padding: 11px 20px; font-size: 13px; border-radius: 12px; font-weight: bold; box-shadow: 0 4px 14px rgba(37,211,102,0.25);">
-                      💬 Konsultasi WhatsApp Admin
-                    </button>
                     <button type="button" class="btn" onclick="App.setPortalTab('chat')" style="background: rgba(255,255,255,0.15); color: #FFFFFF; border: 1px solid rgba(255,255,255,0.35); padding: 11px 20px; font-size: 13px; border-radius: 12px;">
-                      💭 Chat Aplikasi
+                      💬 Chat Admin / Konsultasi Warna
                     </button>
                     <button type="button" class="btn" onclick="App.setPortalTab('my-orders')" style="background: transparent; color: #FDE68A; border: 1px solid rgba(253,230,138,0.4); padding: 11px 18px; font-size: 13px; border-radius: 12px;">
                       📦 Lacak Pesanan (${activeOrders.length})
@@ -5726,14 +5723,9 @@
                               <span style="font-size: 10.5px; color: #888;">Harga Butik</span>
                               <div style="font-size: 16px; font-weight: bold; color: var(--mocha); font-family: Georgia, serif;">${formatRupiah(p.price)}</div>
                             </div>
-                            <div style="display: flex; gap: 6px;">
-                              <button type="button" class="btn btn-primary" style="flex: 1; font-size: 12px; padding: 8px 10px; border-radius: 10px;" onclick="App.openPurchase('${p.id}')">
-                                🛍️ Beli Sekarang
-                              </button>
-                              <button type="button" class="btn btn-outline" style="padding: 8px 10px; font-size: 12px; border-radius: 10px; border-color: #25D366; color: #047857; background: #F0FDF4;" onclick="App.askProductWhatsApp('${p.id}')" title="Tanya Produk ini via WhatsApp Admin">
-                                💬 WA
-                              </button>
-                            </div>
+                            <button type="button" class="btn btn-primary" style="width: 100%; font-size: 12px; padding: 8px 12px; border-radius: 10px;" onclick="App.openPurchase('${p.id}')">
+                              🛍️ Beli Sekarang
+                            </button>
                           </div>
                         </div>
                       `).join('')}
@@ -5838,9 +5830,6 @@
                         <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
                           <div style="font-size: 16px; font-weight: bold; color: var(--mocha);">${formatRupiah(o.total)}</div>
                           <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-                            <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 4px 10px; color: #047857; border-color: #A7F3D0; background: #ECFDF5; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px;" onclick="App.contactAdminWhatsApp('Halo Admin BY.NVDILA! Mau tanya update status pesanan saya ID ' + ('${escapeHtml(o.id)}') + ' (Status: ' + ('${escapeHtml(o.orderStatus)}') + '). Terima kasih!')">
-                              💬 Chat WA Admin
-                            </button>
                             <span class="badge badge-info">${escapeHtml(o.paymentStatus || 'Lunas')}</span>
                             ${(o.orderStatus === 'Pending' || o.orderStatus === 'Processing') ? `
                               <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 4px 10px; color: #DC2626; border-color: #FECACA; background: #FEF2F2; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="App.cancelCustomerOrder('${escapeHtml(o.id)}')">
